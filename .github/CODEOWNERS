@@ -1,0 +1,25 @@
+# CODEOWNERS — require review from specific teams for paths
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default — all changes need platform team review
+*                           @your-org/platform-team
+
+# Infrastructure — requires infra/security review
+/infra/                     @your-org/infra-team @your-org/security-team
+
+# CI/CD pipelines — requires DevOps review
+/.github/workflows/         @your-org/devops-team @your-org/security-team
+/.github/dependabot.yml     @your-org/devops-team
+
+# Security policy
+/SECURITY.md                @your-org/security-team
+
+# C# applications
+/src/FunctionApp/           @your-org/backend-team
+/src/ContainerApp/          @your-org/backend-team
+
+# Python API
+/src/PythonApi/             @your-org/api-team
+
+# Tests — respective owners
+/tests/                     @your-org/backend-team @your-org/api-team

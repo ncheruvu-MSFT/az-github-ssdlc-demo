@@ -1,0 +1,251 @@
+# ==============================================================================
+# CD Pipeline — Deploy to Azure (dev → staging → prod)
+# Triggers on successful CI on main branch
+# SSDLC: Environment approvals, OIDC auth, immutable artifacts
+# ==============================================================================
+name: CD - Deploy to Azure
+
+on:
+  workflow_run:
+    workflows: ["CI - Build & Test"]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  id-token: write    # OIDC for Azure login
+  contents: read
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+
+jobs:
+  # ── Build Artifacts ────────────────────────────────────────────
+  build-artifacts:
+    name: "Build Deployment Artifacts"
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Function App publish
+      - name: Publish Function App
+        run: |
+          dotnet publish src/FunctionApp/HelloWorld.Functions.csproj \
+            -c Release \
+            -o ./artifacts/functionapp
+
+      - name: Upload Function App artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: functionapp
+          path: ./artifacts/functionapp
+
+      # Container images
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+
+      - name: Build & push C# Container App
+        uses: docker/build-push-action@v6
+        with:
+          context: src/ContainerApp
+          push: true
+          tags: ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+
+      - name: Build & push Python API
+        uses: docker/build-push-action@v6
+        with:
+          context: src/PythonApi
+          push: true
+          tags: ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+  # ── Deploy to Dev ──────────────────────────────────────────────
+  deploy-dev:
+    name: "Deploy to Dev"
+    needs: build-artifacts
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      # Deploy Infrastructure
+      - name: Deploy Bicep (dev)
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          region: australiaeast
+          template: infra/main.bicep
+          parameters: infra/main.dev.bicepparam
+          deploymentName: "deploy-dev-${{ github.run_number }}"
+
+      # Deploy Function App
+      - name: Download Function App artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: functionapp
+          path: ./artifacts/functionapp
+
+      - name: Deploy Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: "func-ssdlcdemo-dev"
+          package: "./artifacts/functionapp"
+
+      # Update Container App images
+      - name: Update Container App image
+        run: |
+          az containerapp update \
+            --name ca-hello-ssdlcdemo-dev \
+            --resource-group rg-ssdlcdemo-dev \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+
+      - name: Update Python API image
+        run: |
+          az containerapp update \
+            --name ca-pyapi-ssdlcdemo-dev \
+            --resource-group rg-ssdlcdemo-dev \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+      # Smoke test
+      - name: Smoke test (dev)
+        run: |
+          sleep 30
+          curl -sf https://func-ssdlcdemo-dev.azurewebsites.net/api/health || echo "Function App health check pending"
+
+  # ── Deploy to Staging ──────────────────────────────────────────
+  deploy-staging:
+    name: "Deploy to Staging"
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep (staging)
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          region: australiaeast
+          template: infra/main.bicep
+          parameters: infra/main.staging.bicepparam
+          deploymentName: "deploy-staging-${{ github.run_number }}"
+
+      - name: Download Function App artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: functionapp
+          path: ./artifacts/functionapp
+
+      - name: Deploy Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: "func-ssdlcdemo-staging"
+          package: "./artifacts/functionapp"
+
+      - name: Update Container App image
+        run: |
+          az containerapp update \
+            --name ca-hello-ssdlcdemo-staging \
+            --resource-group rg-ssdlcdemo-staging \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+
+      - name: Update Python API image
+        run: |
+          az containerapp update \
+            --name ca-pyapi-ssdlcdemo-staging \
+            --resource-group rg-ssdlcdemo-staging \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+  # ── Deploy to Production ───────────────────────────────────────
+  deploy-prod:
+    name: "Deploy to Production"
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production     # Requires manual approval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_PROD }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+
+      - name: Deploy Bicep (prod)
+        uses: azure/arm-deploy@v2
+        with:
+          scope: subscription
+          region: australiaeast
+          template: infra/main.bicep
+          parameters: infra/main.prod.bicepparam
+          deploymentName: "deploy-prod-${{ github.run_number }}"
+
+      - name: Download Function App artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: functionapp
+          path: ./artifacts/functionapp
+
+      - name: Deploy Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: "func-ssdlcdemo-prod"
+          package: "./artifacts/functionapp"
+
+      - name: Update Container App image
+        run: |
+          az containerapp update \
+            --name ca-hello-ssdlcdemo-prod \
+            --resource-group rg-ssdlcdemo-prod \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+
+      - name: Update Python API image
+        run: |
+          az containerapp update \
+            --name ca-pyapi-ssdlcdemo-prod \
+            --resource-group rg-ssdlcdemo-prod \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}

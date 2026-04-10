@@ -1,0 +1,195 @@
+# =============================================================================
+# Dependabot — Automated Dependency Updates & Security Patching
+# SSDLC: Keeps all ecosystems current, auto-patches CVEs, groups minor updates
+# Docs: https://docs.github.com/en/code-security/dependabot
+# =============================================================================
+version: 2
+updates:
+  # ── .NET Function App ────────────────────────────────────────
+  - package-ecosystem: "nuget"
+    directory: "/src/FunctionApp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "dotnet"
+      - "security"
+    commit-message:
+      prefix: "deps(nuget)"
+      include: "scope"
+    groups:
+      azure-functions:
+        patterns:
+          - "Microsoft.Azure.Functions.*"
+          - "Microsoft.Azure.WebJobs.*"
+        update-types:
+          - "minor"
+          - "patch"
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+        exclude-patterns:
+          - "Microsoft.Azure.Functions.*"
+        update-types:
+          - "minor"
+          - "patch"
+      security-patches:
+        applies-to: security-updates
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+    security-updates-only: false
+
+  # ── .NET Container App ──────────────────────────────────────
+  - package-ecosystem: "nuget"
+    directory: "/src/ContainerApp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "dotnet"
+      - "security"
+    commit-message:
+      prefix: "deps(nuget)"
+      include: "scope"
+    groups:
+      all-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      security-patches:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ── .NET Test Projects ──────────────────────────────────────
+  - package-ecosystem: "nuget"
+    directory: "/tests/FunctionApp.Tests"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "dotnet"
+      - "testing"
+    commit-message:
+      prefix: "deps(test)"
+    groups:
+      test-packages:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "nuget"
+    directory: "/tests/ContainerApp.Tests"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "dotnet"
+      - "testing"
+    commit-message:
+      prefix: "deps(test)"
+    groups:
+      test-packages:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── Python API ──────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/src/PythonApi"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+      - "security"
+    commit-message:
+      prefix: "deps(pip)"
+      include: "scope"
+    groups:
+      fastapi-stack:
+        patterns:
+          - "fastapi"
+          - "uvicorn"
+          - "starlette"
+          - "pydantic*"
+        update-types:
+          - "minor"
+          - "patch"
+      security-patches:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ── GitHub Actions ──────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci-cd"
+      - "security"
+    commit-message:
+      prefix: "deps(actions)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── Docker — Container App ─────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/src/ContainerApp"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+    commit-message:
+      prefix: "deps(docker)"
+
+  # ── Docker — Python API ────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/src/PythonApi"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+    commit-message:
+      prefix: "deps(docker)"

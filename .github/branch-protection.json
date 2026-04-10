@@ -1,0 +1,48 @@
+{
+    "$schema": "https://raw.githubusercontent.com/nicoll-douglas/branch-protection-schema/refs/heads/main/schema.json",
+    "description": "Recommended branch protection rules for GitHub private repo",
+    "rules": {
+        "main": {
+            "required_status_checks": {
+                "strict": true,
+                "contexts": [
+                    ".NET Build & Test",
+                    "Python Build & Test",
+                    "Security Scanning (SSDLC)",
+                    "Container Image Scan",
+                    "Bicep Lint & Validate",
+                    "Dependency Review"
+                ]
+            },
+            "enforce_admins": true,
+            "required_pull_request_reviews": {
+                "required_approving_review_count": 2,
+                "dismiss_stale_reviews": true,
+                "require_code_owner_reviews": true,
+                "require_last_push_approval": true
+            },
+            "restrictions": null,
+            "allow_force_pushes": false,
+            "allow_deletions": false,
+            "required_linear_history": true,
+            "required_conversation_resolution": true,
+            "required_signatures": true
+        },
+        "develop": {
+            "required_status_checks": {
+                "strict": true,
+                "contexts": [
+                    ".NET Build & Test",
+                    "Python Build & Test",
+                    "Security Scanning (SSDLC)"
+                ]
+            },
+            "required_pull_request_reviews": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews": true
+            },
+            "allow_force_pushes": false,
+            "allow_deletions": false
+        }
+    }
+}
