@@ -82,7 +82,7 @@ This wouldn't have come together without an amazing team effort on the customer 
 
 ## �🔗 Try It Out
 
-- **Repo**: [az-github-ssdlc-demo](https://github.com/your-org/az-github-ssdlc-demo)
+- **Repo**: [az-github-ssdlc-demo](https://github.com/ncheruvu-MSFT/az-github-ssdlc-demo)
 - **Stack**: .NET 8, Python 3.12, Azure Functions, Container Apps, Service Bus, Bicep
 - **Security**: CodeQL, Bandit, MS Defender for Containers, Checkov, Dependabot, GHAS Malware Scanning
 - **Pipeline**: GitHub Actions CI/CD with OIDC + environment gates

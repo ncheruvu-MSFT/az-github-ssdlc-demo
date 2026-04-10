@@ -8,7 +8,7 @@
 
 The modern software development lifecycle (SDLC) demands security at every stage — not bolted on at the end, but woven into the development workflow from the first line of code. This post walks through a **complete Secure SDLC (SSDLC)** implementation using **GitHub Advanced Security**, **GitHub Actions CI/CD**, and **Azure** as the cloud platform, with work tracking via **Azure DevOps Boards** or **GitHub Issues**.
 
-The companion repository [az-github-ssdlc-demo](https://github.com/your-org/az-github-ssdlc-demo) demonstrates every pattern discussed here with working code, pipelines, and infrastructure-as-code.
+The companion repository [az-github-ssdlc-demo](https://github.com/ncheruvu-MSFT/az-github-ssdlc-demo) demonstrates every pattern discussed here with working code, pipelines, and infrastructure-as-code.
 
 ![Architecture Diagram](../diagrams/20260408-modern-ssdlc-github-architecture.drawio)
 
@@ -357,7 +357,7 @@ Here's the complete developer workflow from idea to production:
 ## Repository Reference
 
 The complete working implementation is available at:
-- **Repository**: [az-github-ssdlc-demo](https://github.com/your-org/az-github-ssdlc-demo)
+- **Repository**: [az-github-ssdlc-demo](https://github.com/ncheruvu-MSFT/az-github-ssdlc-demo)
 - **Technologies**: .NET 8, Python 3.12, Azure Functions, Container Apps, Service Bus, Bicep
 - **Security Tools**: CodeQL, Bandit, Microsoft Defender for Containers, Checkov, Safety, dotnet audit, Dependabot, GHAS Malware Scanning
 - **Pipeline**: GitHub Actions (CI + CD) with OIDC and environment gates
