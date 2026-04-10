@@ -183,4 +183,5 @@ resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
 // ============================================================================
 output namespaceName string = serviceBus.name
 output namespaceId string = serviceBus.id
+#disable-next-line outputs-should-not-contain-secrets
 output connectionString string = sendRule.listKeys().primaryConnectionString

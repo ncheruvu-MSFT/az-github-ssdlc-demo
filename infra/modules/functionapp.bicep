@@ -35,6 +35,7 @@ param keyVaultName string
 // Storage Account for Function App
 // ============================================================================
 var storageAccountName = replace('st${projectName}func${environment}', '-', '')
+var keyVaultUri = 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}'
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageAccountName
@@ -131,6 +132,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'ServiceBusConnection'
           value: serviceBusConnectionString
+        }
+        {
+          name: 'KEY_VAULT_URI'
+          value: keyVaultUri
         }
       ]
     }
