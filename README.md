@@ -2,13 +2,33 @@
 
 Enterprise-grade cloud deployment demonstrating **Azure Verified Module** patterns, **SSDLC best practices**, and **CI/CD from GitHub** with automated testing.
 
+## Why This Exists
+
+Most organizations bolt security onto their pipelines as an afterthought — a Trivy scan here, a manual pen-test there. The result is fragmented tooling, inconsistent enforcement, and security gates that developers learn to work around.
+
+### What This Solves
+
+This repository demonstrates a **unified, shift-left SSDLC** where security is embedded at every stage — from code authoring to production deployment — using a single platform (GitHub + Azure) instead of stitching together disconnected tools.
+
+| | Traditional (Fragmented) | This Approach (Unified) |
+|---|---|---|
+| **Code scanning** | Separate SAST vendor | GitHub CodeQL (native) |
+| **Container scanning** | Standalone Trivy/Snyk | Microsoft Defender for Containers |
+| **Secret detection** | Pre-commit hooks only | GitHub Secret Scanning + push protection |
+| **Dependency updates** | Manual CVE triage | Dependabot + Dependency Review (auto-PR) |
+| **IaC validation** | Local linting | Checkov + Bicep lint in CI |
+| **Identity** | Stored credentials | OIDC federation — zero secrets |
+| **Malware scanning** | Third-party AV | GitHub Advanced Security malware detection |
+
+> **Bottom line:** If your security toolchain requires a wiki page to explain which scanner runs where, you have a process problem — not a tooling problem. This repo shows how to collapse that complexity into a single, auditable pipeline.
+
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        GitHub Private Repository                        │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
-│  │ CodeQL   │  │ Trivy    │  │ Bandit   │  │ Checkov  │  │ Dep      │ │
+│  │ CodeQL   │  │ Defender │  │ Bandit   │  │ Checkov  │  │ Dep      │ │
 │  │ SAST     │  │ Container│  │ Python   │  │ IaC Scan │  │ Review   │ │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘ │
 │                          CI/CD Pipelines                                │
@@ -150,7 +170,7 @@ Developer
     │       │   ├── Python lint + test + coverage  
     │       │   ├── CodeQL SAST (C# + Python)
     │       │   ├── Bandit Python SAST
-    │       │   ├── Trivy container scan
+    │       │   ├── MS Defender container scan
     │       │   ├── Checkov IaC scan
     │       │   ├── Dependency review
     │       │   └── Bicep lint + validate
@@ -183,12 +203,14 @@ Developer
 |------|------|--------|----------|
 | **GitHub CodeQL** | SAST | C# & Python code | `codeql.yml` |
 | **Bandit** | SAST | Python security | `ci.yml` |
-| **Trivy** | Container scan | Docker images | `ci.yml` |
+| **MS Defender for Containers** | Container scan | Docker images | `ci.yml` |
 | **Checkov** | IaC scan | Bicep templates | `ci.yml` |
 | **Safety** | SCA | Python dependencies | `ci.yml` |
 | **dotnet audit** | SCA | .NET dependencies | `ci.yml` |
 | **Dependency Review** | SCA | All PRs | `dependency-review.yml` |
 | **Dependabot** | Auto-update | All ecosystems | `dependabot.yml` |
+| **GHAS Malware Scanning** | Malware detection | Commits & uploads | GitHub Advanced Security |
+| **GHAS Vulnerability Scanning** | CVE detection | Code & dependencies | GitHub Advanced Security |
 
 ### Infrastructure Security
 
@@ -220,7 +242,7 @@ Developer
 |-------|----------------|------------------|------------|
 | **Unit** | xUnit + Moq + FluentAssertions | n/a | pytest |
 | **Integration** | n/a | WebApplicationFactory | httpx AsyncClient |
-| **Security** | CodeQL, dotnet audit | Trivy, CodeQL | Bandit, Safety |
+| **Security** | CodeQL, dotnet audit | Defender, CodeQL | Bandit, Safety |
 | **Infrastructure** | Bicep lint, Checkov | n/a | n/a |
 
 ### Tools to Explore for Automated Testing

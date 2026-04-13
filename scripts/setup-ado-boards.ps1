@@ -2,16 +2,39 @@
 # =============================================================================
 # ADO Boards → GitHub → Azure Nonprod — Setup & Test Script
 # Prerequisites: az cli, az devops extension, gh cli
+# Loads config from .env file in repo root (falls back to params)
 # =============================================================================
 #Requires -Version 7.0
 param(
-    [Parameter(Mandatory)][string]$AdoOrg,        # e.g. "https://dev.azure.com/myorg"
-    [Parameter(Mandatory)][string]$AdoProject,     # e.g. "SsdlcDemo"
-    [string]$GitHubRepo = "ncheruvu-MSFT/az-github-ssdlc-demo",
+    [string]$AdoOrg,
+    [string]$AdoProject,
+    [string]$GitHubRepo,
     [string]$AzureSubscriptionId,
     [string]$AzureTenantId,
-    [string]$AzureRegion = "canadacentral"
+    [string]$AzureRegion
 )
+
+# ─── Load .env file ────────────────────────────────────────────
+$envFile = Join-Path $PSScriptRoot "../.env"
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+            $key = $Matches[1].Trim(); $val = $Matches[2].Trim()
+            switch ($key) {
+                'ADO_ORG'       { if (-not $AdoOrg)       { $AdoOrg = $val } }
+                'ADO_PROJECT'   { if (-not $AdoProject)   { $AdoProject = $val } }
+                'GITHUB_REPO'   { if (-not $GitHubRepo)   { $GitHubRepo = $val } }
+                'AZURE_REGION'  { if (-not $AzureRegion)  { $AzureRegion = $val } }
+            }
+        }
+    }
+    Write-Host "  Loaded config from .env" -ForegroundColor DarkGray
+}
+if (-not $AdoOrg -or -not $AdoProject) {
+    Write-Host "ERROR: AdoOrg and AdoProject are required (set in .env or pass as params)" -ForegroundColor Red; exit 1
+}
+if (-not $GitHubRepo) { $GitHubRepo = "ncheruvu-MSFT/az-github-ssdlc-demo" }
+if (-not $AzureRegion) { $AzureRegion = "canadacentral" }
 
 $ErrorActionPreference = "Stop"
 
@@ -41,14 +64,23 @@ Write-Host "  ✓ GitHub CLI authenticated" -ForegroundColor Green
 
 # ADO CLI
 az devops configure --defaults organization=$AdoOrg project=$AdoProject 2>$null
-$adoTest = az devops project show --project $AdoProject -o json 2>&1
+$adoProjectJson = az devops project show --project $AdoProject -o json 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  ✗ ADO CLI cannot reach $AdoOrg/$AdoProject" -ForegroundColor Red
     Write-Host "    Run: az login   (then retry)" -ForegroundColor Yellow
     Write-Host "    Or:  az devops login --organization $AdoOrg" -ForegroundColor Yellow
     exit 1
 }
-Write-Host "  ✓ ADO project: $AdoProject" -ForegroundColor Green
+$adoProjectObj = $adoProjectJson | ConvertFrom-Json
+$processTemplate = $adoProjectObj.capabilities.processTemplate.templateName
+Write-Host "  ✓ ADO project: $AdoProject (process: $processTemplate)" -ForegroundColor Green
+
+# Determine work item types based on process template
+# Basic: Epic → Issue → Task  |  Agile: Epic → Feature → User Story → Task
+$isBasic = $processTemplate -eq 'Basic'
+$midType = if ($isBasic) { 'Issue' } else { 'Feature' }
+$storyType = if ($isBasic) { 'Issue' } else { 'User Story' }
+Write-Host "  → Using work item types: Epic → $midType → $storyType → Task" -ForegroundColor DarkGray
 
 # ─── Step 1: Connect ADO Boards to GitHub ──────────────────────
 Write-Host "`n▶ [1/6] Connecting ADO Boards ↔ GitHub repo..." -ForegroundColor Yellow
@@ -62,7 +94,7 @@ Write-Host @"
 "@ -ForegroundColor DarkGray
 
 # ─── Step 2: Create ADO test work items ────────────────────────
-Write-Host "`n▶ [2/6] Creating ADO test work items (Epic → Feature → User Stories → Tasks)..." -ForegroundColor Yellow
+Write-Host "`n▶ [2/6] Creating ADO test work items (Epic → $midType → $storyType → Tasks)..." -ForegroundColor Yellow
 
 # Epic
 $epic = az boards work-item create `
@@ -78,18 +110,18 @@ if ($epic) {
     Write-Host "  ✗ Failed to create Epic (check ADO permissions)" -ForegroundColor Red; exit 1
 }
 
-# Feature
+# Feature / Issue (mid-level) — depends on process template
 $feature = az boards work-item create `
-    --type "Feature" `
+    --type $midType `
     --title "GitHub Actions CI/CD with GHAS Security Scanning" `
     --description "Implement CI pipeline with 8 parallel checks (CodeQL, Trivy, Checkov, Bandit, dotnet test, pytest, dependency review, Bicep lint) and CD pipeline with progressive deployment (dev → staging → prod)." `
     --fields "System.Tags=ci-cd;github-actions;ghas" `
     -o json 2>$null | ConvertFrom-Json
 
 if ($feature) {
-    # Parent the feature under the epic
-    az boards work-item relation add --id $feature.id --relation-type "System.LinkTypes.Hierarchy-Reverse" --target-id $epic.id -o none 2>$null
-    Write-Host "  ✓ Feature #$($feature.id) → (parent) Epic #$($epic.id)" -ForegroundColor Green
+    # Parent the feature/issue under the epic
+    az boards work-item relation add --id $feature.id --relation-type "Parent" --target-id $epic.id -o none 2>$null
+    Write-Host "  ✓ $midType #$($feature.id) → (parent) Epic #$($epic.id)" -ForegroundColor Green
 }
 
 # User Stories with Tasks
@@ -147,17 +179,21 @@ $stories = @(
 )
 
 foreach ($story in $stories) {
+    # Basic process: Issue (no AcceptanceCriteria field)  |  Agile: User Story (has AcceptanceCriteria)
+    $fieldsArr = @("System.Tags=$($story.Tags)")
+    if (-not $isBasic) { $fieldsArr += "Microsoft.VSTS.Common.AcceptanceCriteria=$($story.AcceptanceCriteria)" }
+
     $wi = az boards work-item create `
-        --type "User Story" `
+        --type $storyType `
         --title $story.Title `
-        --description $story.Description `
-        --fields "System.Tags=$($story.Tags)" "Microsoft.VSTS.Common.AcceptanceCriteria=$($story.AcceptanceCriteria)" `
+        --description "$($story.Description)`n`nAcceptance Criteria:`n$($story.AcceptanceCriteria)" `
+        --fields @fieldsArr `
         -o json 2>$null | ConvertFrom-Json
 
     if ($wi) {
-        # Parent under feature
-        az boards work-item relation add --id $wi.id --relation-type "System.LinkTypes.Hierarchy-Reverse" --target-id $feature.id -o none 2>$null
-        Write-Host "  ✓ User Story #$($wi.id): $($story.Title | Select-String -Pattern '^.{0,60}' | ForEach-Object { $_.Matches.Value })..." -ForegroundColor Green
+        # Parent under feature/issue
+        az boards work-item relation add --id $wi.id --relation-type "Parent" --target-id $feature.id -o none 2>$null
+        Write-Host "  ✓ $storyType #$($wi.id): $($story.Title | Select-String -Pattern '^.{0,60}' | ForEach-Object { $_.Matches.Value })..." -ForegroundColor Green
 
         # Create tasks
         foreach ($taskTitle in $story.Tasks) {
@@ -167,7 +203,7 @@ foreach ($story in $stories) {
                 --fields "System.Tags=$($story.Tags)" `
                 -o json 2>$null | ConvertFrom-Json
             if ($task) {
-                az boards work-item relation add --id $task.id --relation-type "System.LinkTypes.Hierarchy-Reverse" --target-id $wi.id -o none 2>$null
+                az boards work-item relation add --id $task.id --relation-type "Parent" --target-id $wi.id -o none 2>$null
                 Write-Host "    ✓ Task #$($task.id): $taskTitle" -ForegroundColor DarkGreen
             }
         }
@@ -252,17 +288,15 @@ foreach ($env in @("dev", "staging")) {
 }
 
 # Production with approval gate
-gh api --method PUT "repos/$GitHubRepo/environments/production" `
-    --input - 2>$null <<EOF
-{
-  "wait_timer": 0,
-  "reviewers": [],
-  "deployment_branch_policy": {
-    "protected_branches": true,
-    "custom_branch_policies": false
-  }
-}
-EOF
+$prodBody = @{
+    wait_timer = 0
+    reviewers = @()
+    deployment_branch_policy = @{
+        protected_branches = $true
+        custom_branch_policies = $false
+    }
+} | ConvertTo-Json -Compress
+$prodBody | gh api --method PUT "repos/$GitHubRepo/environments/production" --input - 2>$null
 Write-Host "  ✓ Environment: production (with branch policy)" -ForegroundColor Green
 
 Write-Host @"
@@ -308,3 +342,4 @@ Write-Host @"
 
 ══════════════════════════════════════════════════════
 "@ -ForegroundColor Cyan
+
