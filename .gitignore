@@ -34,3 +34,4 @@ local.settings.json
 # Build artifacts
 artifacts/
 publish/
+infra/main.json

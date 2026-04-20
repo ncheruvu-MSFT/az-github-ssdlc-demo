@@ -31,6 +31,9 @@ param subnetId string
 @description('Key Vault name for secret references')
 param keyVaultName string
 
+@description('Log Analytics Workspace ID for diagnostics')
+param logAnalyticsWorkspaceId string
+
 // ============================================================================
 // Storage Account for Function App
 // ============================================================================
@@ -149,6 +152,7 @@ resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
   scope: functionApp
   name: '${functionAppName}-diag'
   properties: {
+    workspaceId: logAnalyticsWorkspaceId
     logs: [
       {
         categoryGroup: 'allLogs'
