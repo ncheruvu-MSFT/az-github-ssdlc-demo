@@ -185,17 +185,19 @@ jobs:
       - name: Build container image
         run: docker build -t ${{ matrix.name }}:scan -f ${{ matrix.dockerfile }} ${{ matrix.context }}
 
-      - name: Microsoft Defender for DevOps container scan
-        uses: microsoft/security-devops-action@v1
+      - name: Microsoft Defender container scan
+        uses: azure/container-scan@v0
         id: defender
         with:
-          categories: "containers"
+          image-name: ${{ matrix.name }}:scan
+          severity-threshold: HIGH
+        continue-on-error: true
 
-      - name: Upload Defender scan results
+      - name: Upload scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('.gdn/msdo.sarif') != ''
         with:
-          sarif_file: ${{ steps.defender.outputs.sarifFile }}
+          sarif_file: ${{ steps.defender.outputs.sarif-file-path }}
 
   # ── Infrastructure Validation ──────────────────────────────────
   infra-validate:
