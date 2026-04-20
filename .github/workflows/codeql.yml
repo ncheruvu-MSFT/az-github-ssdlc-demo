@@ -30,7 +30,18 @@ jobs:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
 
-      - name: Autobuild
+      - name: Setup .NET
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build (.NET)
+        if: matrix.language == 'csharp'
+        run: dotnet build SsdlcDemo.sln --configuration Release
+
+      - name: Autobuild (Python)
+        if: matrix.language == 'python'
         uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL Analysis

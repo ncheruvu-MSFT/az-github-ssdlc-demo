@@ -157,8 +157,8 @@ jobs:
         with:
           languages: csharp, python
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+      - name: Build for CodeQL
+        run: dotnet build SsdlcDemo.sln --configuration Release
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
