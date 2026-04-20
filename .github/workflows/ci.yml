@@ -169,7 +169,12 @@ jobs:
   container-scan:
     name: "Container Image Scan"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: containerapp
@@ -185,19 +190,21 @@ jobs:
       - name: Build container image
         run: docker build -t ${{ matrix.name }}:scan -f ${{ matrix.dockerfile }} ${{ matrix.context }}
 
-      - name: Microsoft Defender container scan
-        uses: azure/container-scan@v0
+      - name: Microsoft Defender for DevOps container scan
+        uses: microsoft/security-devops-action@v1
         id: defender
+        env:
+          GDN_TRIVY_ACTION: image
+          GDN_TRIVY_TARGET: ${{ matrix.name }}:scan
         with:
-          image-name: ${{ matrix.name }}:scan
-          severity-threshold: HIGH
+          tools: trivy
         continue-on-error: true
 
       - name: Upload scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('.gdn/msdo.sarif') != ''
+        if: always() && steps.defender.outputs.sarifFile != ''
         with:
-          sarif_file: ${{ steps.defender.outputs.sarif-file-path }}
+          sarif_file: ${{ steps.defender.outputs.sarifFile }}
 
   # ── Infrastructure Validation ──────────────────────────────────
   infra-validate:
