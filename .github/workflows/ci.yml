@@ -185,19 +185,17 @@ jobs:
       - name: Build container image
         run: docker build -t ${{ matrix.name }}:scan -f ${{ matrix.dockerfile }} ${{ matrix.context }}
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+      - name: Microsoft Defender for DevOps container scan
+        uses: microsoft/security-devops-action@v1
+        id: defender
         with:
-          image-ref: "${{ matrix.name }}:scan"
-          format: "sarif"
-          output: "trivy-${{ matrix.name }}.sarif"
-          severity: "CRITICAL,HIGH"
+          categories: "containers"
 
-      - name: Upload Trivy scan results
+      - name: Upload Defender scan results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: "trivy-${{ matrix.name }}.sarif"
+          sarif_file: ${{ steps.defender.outputs.sarifFile }}
 
   # ── Infrastructure Validation ──────────────────────────────────
   infra-validate:
