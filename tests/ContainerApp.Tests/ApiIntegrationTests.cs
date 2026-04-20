@@ -100,4 +100,46 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
         // Assert
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
     }
+
+    [Fact]
+    public async Task Hello_WithExcessivelyLongName_ReturnsBadRequest()
+    {
+        // Arrange — name longer than 100 characters
+        var longName = new string('A', 101);
+
+        // Act
+        var response = await _client.GetAsync($"/api/hello?name={longName}");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var content = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        content.Should().ContainKey("error");
+    }
+
+    [Fact]
+    public async Task Hello_WithMaxLengthName_ReturnsOk()
+    {
+        // Arrange — exactly 100 characters should pass
+        var maxName = new string('B', 100);
+
+        // Act
+        var response = await _client.GetAsync($"/api/hello?name={maxName}");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var content = await response.Content.ReadFromJsonAsync<HelloResponse>();
+        content!.Message.Should().Contain(maxName);
+    }
+
+    [Fact]
+    public async Task Hello_WithEmptyName_ReturnsHelloWorld()
+    {
+        // Act
+        var response = await _client.GetAsync("/api/hello?name=");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var content = await response.Content.ReadFromJsonAsync<HelloResponse>();
+        content!.Message.Should().Be("Hello, World!");
+    }
 }
