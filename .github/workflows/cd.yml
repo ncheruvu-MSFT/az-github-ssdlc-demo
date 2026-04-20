@@ -14,6 +14,7 @@ on:
 permissions:
   id-token: write    # OIDC for Azure login
   contents: read
+  packages: write    # Container image signing
 
 env:
   DOTNET_VERSION: "8.0.x"
@@ -85,6 +86,62 @@ jobs:
           push: true
           tags: ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
 
+      # ── Container Image Signing with Notation (Notary v2) ──
+      - name: Install Notation CLI
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: "1.2.0"
+
+      - name: Generate signing key (self-signed for demo)
+        run: |
+          notation cert generate-test "ssdlc-demo-signing-key"
+          echo "Notation signing key generated for demo purposes"
+
+      - name: Sign Container App image
+        run: |
+          notation sign \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }} \
+            --key "ssdlc-demo-signing-key"
+          echo "✅ Container App image signed"
+
+      - name: Sign Python API image
+        run: |
+          notation sign \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }} \
+            --key "ssdlc-demo-signing-key"
+          echo "✅ Python API image signed"
+
+      - name: Export trust policy for verification
+        run: |
+          # Create trust policy for downstream verification
+          mkdir -p ./notation-config
+          cat > ./notation-config/trustpolicy.json << 'EOF'
+          {
+            "version": "1.0",
+            "trustPolicies": [
+              {
+                "name": "ssdlc-demo-images",
+                "registryScopes": [ "${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/*" ],
+                "signatureVerification": {
+                  "level": "strict"
+                },
+                "trustStores": [ "ca:ssdlc-demo-signing-key" ],
+                "trustedIdentities": [ "*" ]
+              }
+            ]
+          }
+          EOF
+          # Copy certs for downstream jobs
+          cp -r ~/.config/notation ./notation-config/notation-home || true
+          echo "Trust policy created"
+
+      - name: Upload signing artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: notation-config
+          path: ./notation-config
+          retention-days: 1
+
   # ── Deploy to Dev ──────────────────────────────────────────────
   deploy-dev:
     name: "Deploy to Dev"
@@ -101,6 +158,39 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      # ── Verify container signatures before deploy ──
+      - name: Install Notation CLI
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: "1.2.0"
+
+      - name: Download signing config
+        uses: actions/download-artifact@v4
+        with:
+          name: notation-config
+          path: ./notation-config
+
+      - name: Restore Notation trust store
+        run: |
+          mkdir -p ~/.config/notation
+          cp -r ./notation-config/notation-home/* ~/.config/notation/ || true
+          cp ./notation-config/trustpolicy.json ~/.config/notation/trustpolicy.json
+
+      - name: Verify Container App image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+          echo "✅ Container App image signature verified"
+
+      - name: Verify Python API image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+          echo "✅ Python API image signature verified"
 
       # Deploy Infrastructure
       - name: Deploy Bicep (dev)
@@ -163,6 +253,39 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      # ── Verify container signatures before deploy ──
+      - name: Install Notation CLI
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: "1.2.0"
+
+      - name: Download signing config
+        uses: actions/download-artifact@v4
+        with:
+          name: notation-config
+          path: ./notation-config
+
+      - name: Restore Notation trust store
+        run: |
+          mkdir -p ~/.config/notation
+          cp -r ./notation-config/notation-home/* ~/.config/notation/ || true
+          cp ./notation-config/trustpolicy.json ~/.config/notation/trustpolicy.json
+
+      - name: Verify Container App image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+          echo "✅ Container App image signature verified"
+
+      - name: Verify Python API image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+          echo "✅ Python API image signature verified"
+
       - name: Deploy Bicep (staging)
         uses: azure/arm-deploy@v2
         with:
@@ -214,6 +337,39 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID_PROD }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      # ── Verify container signatures before deploy (mandatory for prod) ──
+      - name: Install Notation CLI
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: "1.2.0"
+
+      - name: Download signing config
+        uses: actions/download-artifact@v4
+        with:
+          name: notation-config
+          path: ./notation-config
+
+      - name: Restore Notation trust store
+        run: |
+          mkdir -p ~/.config/notation
+          cp -r ./notation-config/notation-home/* ~/.config/notation/ || true
+          cp ./notation-config/trustpolicy.json ~/.config/notation/trustpolicy.json
+
+      - name: Verify Container App image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+          echo "✅ Container App image signature verified — PRODUCTION"
+
+      - name: Verify Python API image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+          echo "✅ Python API image signature verified — PRODUCTION"
 
       - name: Deploy Bicep (prod)
         uses: azure/arm-deploy@v2
