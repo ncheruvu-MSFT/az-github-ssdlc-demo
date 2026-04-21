@@ -192,7 +192,7 @@ permissions:
 The CD pipeline deploys through three environments with progressive gates:
 
 ```
-Build Artifacts → DEV (auto) → STAGING (auto) → ⏸ Manual Gate → PROD (gated) → Health Checks
+Build Artifacts → Sign Images (Notation) → DEV (auto) → STAGING (auto) → Staging Gate → ⏸ Manual Gate → PROD (gated) → Health Checks → Teams Notification
 ```
 
 **Key design decisions:**
@@ -210,9 +210,15 @@ Build Artifacts → DEV (auto) → STAGING (auto) → ⏸ Manual Gate → PROD (
 
 2. **Immutable Artifacts** — Container images are tagged with the commit SHA, ensuring exact traceability from deployment to source.
 
-3. **Environment Protection Rules** — Production requires manual approval from designated reviewers. Staging and dev deploy automatically.
+3. **Notation Image Signing** — All container images are signed using Notary v2 (Notation) as part of the CD pipeline, providing supply chain integrity verification before deployment.
 
-4. **Smoke Tests** — Each deployment is verified with health check endpoints before proceeding.
+4. **Environment Protection Rules** — Production requires manual approval from designated reviewers. Staging and dev deploy automatically.
+
+5. **Staging Gate Report** — An automated go/no-go release readiness report is generated after staging deployment, verifying CI status, image signatures, and infrastructure health.
+
+6. **Smoke Tests** — Each deployment is verified with health check endpoints before proceeding.
+
+7. **Teams Notifications** — Deployment status is sent to a Microsoft Teams channel via incoming webhook.
 
 ---
 
@@ -323,21 +329,38 @@ Here's the complete developer workflow from idea to production:
     │  Build → Test → Coverage → Security Scan      │
     │  CodeQL · Bandit · Defender · Checkov · Dep Rev  │
     └───────────────────────────────────────────────┘
- 7. ┌──── GitHub Advanced Security ─────────────────┐
-    │  Secret Scanning · SAST · Dependency Alerts    │
-    └───────────────────────────────────────────────┘
- 8. CODEOWNERS review + 2 approvals
- 9. Merge to develop → PR to main → Merge
-10. ┌──── Automated CD ─────────────────────────────┐
-    │  Build → DEV → STAGING → ⏸ Gate → PROD       │
+ 7. ┌──── GitHuSign (Notation) → DEV → STAGING      │
+    │  Staging Gate Report → ⏸ Gate → PROD          │
     │  OIDC auth · Immutable images · Health checks  │
+    │  Teams notification on deployment               │
     └───────────────────────────────────────────────┘
 11. Telemetry flows to Application Insights
 12. Work item auto-transitions to "Done"
 ```
 
----
+### ADO → GitHub Copilot Agent Bridge
 
+For AI-assisted development, ADO work items can trigger GitHub Copilot Coding Agent:
+
+1. ADO work item dispatches a `repository_dispatch` event via the `ado-copilot-bridge.yml` workflow
+2. Copilot Agent picks up the task description and creates a feature branch + PR
+3. CI validates the PR automatically (all 8 checks)staging gate report and manual gate protecting production.
+
+4. **Supply chain integrity** — Notation (Notary v2) signs all container images; signatures are verified before deployment to each environment.
+
+5. **Full traceability** — From work item → commit → PR → CI results → deployment. Every change is auditable. ADO Boards links bidirectionally with GitHub.
+
+6. **Infrastructure parity** — The same Bicep templates deploy every environment, with parameterized differences for scale and security posture.
+
+7. **Defense in depth** — Network segmentation, private endpoints, non-root containers, NSG deny-all, and 10+ security scanners.
+
+8. **AI-assisted development** — ADO work items can trigger GitHub Copilot Coding Agent for automated PR creation
+11. Telemetry flows to Application Insights
+12. Work item auto-transitions to "Done"
+```
+
+---, Notation image signing
+- **Pipeline**: GitHub Actions (CI + CD) with OIDC, environment gates, staging gate report, Teams notifications, and ADO Copilot bridge
 ## Key Takeaways
 
 1. **Security is not a phase** — it's integrated into every stage via GitHub Advanced Security and shift-left scanning tools.

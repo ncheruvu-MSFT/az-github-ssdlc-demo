@@ -43,12 +43,15 @@ A **six-layer DevSecOps architecture** covering the full lifecycle:
 ### 🚀 CD Pipeline (Progressive Deployment)
 
 ```
-Build → DEV (auto) → STAGING (auto) → ⏸ Manual Gate → PROD → Health Checks
+Build → Sign Images (Notation) → DEV (auto) → STAGING (auto) → Staging Gate Report → ⏸ Manual Gate → PROD → Health Checks → Teams Notification
 ```
 
 - **OIDC auth** — Zero stored credentials (federated identity with Azure AD)
 - **Immutable images** — Container tags = commit SHA
+- **Notation signing** — Supply chain integrity via Notary v2 image signatures
+- **Staging gate** — Automated go/no-go release readiness report
 - **Environment gates** — Manual approval for production
+- **Teams notifications** — Deployment status sent to Teams channel
 
 ### ☁️ Azure Platform
 
@@ -67,9 +70,10 @@ All Bicep with Azure Verified Module patterns — same templates deploy dev/stag
 ![Modern SSDLC Architecture](../diagrams/20260408-modern-ssdlc-github-architecture.drawio)
 
 ## 🔑 Key Design Decisions
-
-1. **Security is not a phase** — GitHub Advanced Security + Microsoft Defender for Containers scan at every stage
-2. **Zero stored credentials** — OIDC for CI/CD, Managed Identities for services, RBAC for authz
+staging gate report, manual gate protects prod
+4. **Full traceability** — Work item → commit → PR → CI results → deployment (auditable end-to-end)
+5. **Supply chain integrity** — Notation signs container images; verified before deployment
+6. **Defense in depth** — Private endpoints, non-root containers, NSG deny-all, 10 RBAC for authz
 3. **Progressive deployment** — Auto-promote through dev/staging, manual gate protects prod
 4. **Full traceability** — Work item → commit → PR → CI results → deployment (auditable end-to-end)
 5. **Defense in depth** — Private endpoints, non-root containers, NSG deny-all, 8+ security scanners
@@ -80,8 +84,9 @@ This wouldn't have come together without an amazing team effort on the customer 
 
 ---
 
-## �🔗 Try It Out
-
+## �🔗 Try It Out, Notation image signing
+- **Pipeline**: GitHub Actions CI/CD with OIDC + environment gates + staging gate report + Teams notifications
+- **Integration**: Azure DevOps Boards ↔ GitHub bidirectional traceability, Copilot Coding Agent bridge
 - **Repo**: [az-github-ssdlc-demo](https://github.com/ncheruvu-MSFT/az-github-ssdlc-demo)
 - **Stack**: .NET 8, Python 3.12, Azure Functions, Container Apps, Service Bus, Bicep
 - **Security**: CodeQL, Bandit, MS Defender for Containers, Checkov, Dependabot, GHAS Malware Scanning

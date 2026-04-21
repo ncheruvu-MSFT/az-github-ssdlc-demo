@@ -59,6 +59,19 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 }
 
 // ============================================================================
+// File Share (pre-create to avoid 403 race condition on Consumption plan)
+// ============================================================================
+resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2023-05-01' = {
+  parent: storageAccount
+  name: 'default'
+}
+
+resource contentShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = {
+  parent: fileService
+  name: toLower(functionAppName)
+}
+
+// ============================================================================
 // App Service Plan (Elastic Premium for VNet integration)
 // ============================================================================
 var planName = 'asp-${projectName}-func-${environment}'
@@ -86,6 +99,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   location: location
   tags: union(tags, { 'azd-service-name': 'functionapp' })
   kind: 'functionapp'
+  dependsOn: [contentShare]
   identity: {
     type: 'SystemAssigned'
   }

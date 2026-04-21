@@ -1,0 +1,352 @@
+# ==============================================================================
+# Azure Pipelines — CI with SonarQube per-path analysis (GitHub repo)
+# Triggers per path in mono-repo — each component gets its own SonarQube project
+# ==============================================================================
+# Prerequisites:
+#   1. SonarQube service connection named 'SonarQube' in Azure DevOps
+#   2. GitHub service connection named 'GitHub-SSDLC-Demo' in Azure DevOps
+#   3. SonarQube projects created: ssdlc-demo-containerapp, ssdlc-demo-functionapp, ssdlc-demo-pythonapi
+#   4. SonarQube GitHub PR decoration configured (ALM integration)
+# ==============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/**
+      - tests/**
+      - infra/**
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/**
+      - tests/**
+      - infra/**
+
+variables:
+  DOTNET_VERSION: "8.0.x"
+  PYTHON_VERSION: "3.12"
+  sonarQubeServiceConnection: "SonarQube"
+
+# ══════════════════════════════════════════════════════════════════
+# Stage 1: Detect which paths changed
+# ══════════════════════════════════════════════════════════════════
+stages:
+  - stage: DetectChanges
+    displayName: "Detect Changed Paths"
+    jobs:
+      - job: PathFilter
+        displayName: "Determine affected components"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - pwsh: |
+              # Compare against target branch for PRs, or previous commit for CI
+              if ("$(Build.Reason)" -eq "PullRequest") {
+                $diffTarget = "origin/$(System.PullRequest.TargetBranch)"
+              } else {
+                $diffTarget = "HEAD~1"
+              }
+
+              $changedFiles = git diff --name-only $diffTarget HEAD
+
+              $containerApp = ($changedFiles | Where-Object { $_ -match "^src/ContainerApp/" -or $_ -match "^tests/ContainerApp.Tests/" }).Count -gt 0
+              $functionApp  = ($changedFiles | Where-Object { $_ -match "^src/FunctionApp/"  -or $_ -match "^tests/FunctionApp.Tests/" }).Count -gt 0
+              $pythonApi    = ($changedFiles | Where-Object { $_ -match "^src/PythonApi/"    -or $_ -match "^tests/PythonApi.Tests/" }).Count -gt 0
+
+              Write-Host "ContainerApp changed: $containerApp"
+              Write-Host "FunctionApp  changed: $functionApp"
+              Write-Host "PythonApi    changed: $pythonApi"
+
+              Write-Host "##vso[task.setvariable variable=containerAppChanged;isOutput=true]$containerApp"
+              Write-Host "##vso[task.setvariable variable=functionAppChanged;isOutput=true]$functionApp"
+              Write-Host "##vso[task.setvariable variable=pythonApiChanged;isOutput=true]$pythonApi"
+            name: changes
+            displayName: "Detect changed paths"
+
+  # ══════════════════════════════════════════════════════════════════
+  # Stage 2: .NET Container App — Build + Test + SonarQube
+  # ══════════════════════════════════════════════════════════════════
+  - stage: ContainerApp
+    displayName: "Container App — Build & SonarQube"
+    dependsOn: DetectChanges
+    condition: eq(dependencies.DetectChanges.outputs['PathFilter.changes.containerAppChanged'], 'True')
+    jobs:
+      - job: BuildAndScan
+        displayName: "Build, Test, SonarQube Analysis"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: UseDotNet@2
+            displayName: "Install .NET $(DOTNET_VERSION)"
+            inputs:
+              version: $(DOTNET_VERSION)
+
+          # ── SonarQube Prepare ──
+          - task: SonarQubePrepare@7
+            displayName: "SonarQube Prepare — ContainerApp"
+            inputs:
+              SonarQube: $(sonarQubeServiceConnection)
+              scannerMode: dotnet
+              projectKey: "ssdlc-demo-containerapp"
+              projectName: "SSDLC Demo - Container App"
+              extraProperties: |
+                sonar.cs.opencover.reportsPaths=$(Build.SourcesDirectory)/TestResults/**/coverage.opencover.xml
+                sonar.cs.vstest.reportsPaths=$(Build.SourcesDirectory)/TestResults/**/*.trx
+                sonar.coverage.exclusions=**/Program.cs
+                sonar.exclusions=**/bin/**,**/obj/**
+
+          # ── Build ──
+          - task: DotNetCoreCLI@2
+            displayName: "Restore & Build"
+            inputs:
+              command: build
+              projects: |
+                src/ContainerApp/HelloWorld.ContainerApp.csproj
+                tests/ContainerApp.Tests/HelloWorld.ContainerApp.Tests.csproj
+              arguments: "--configuration Release"
+
+          # ── Test with Coverage ──
+          - task: DotNetCoreCLI@2
+            displayName: "Run Tests with Coverage"
+            inputs:
+              command: test
+              projects: "tests/ContainerApp.Tests/HelloWorld.ContainerApp.Tests.csproj"
+              arguments: >-
+                --configuration Release
+                --no-build
+                --logger "trx;LogFileName=containerapp-results.trx"
+                --collect:"XPlat Code Coverage"
+                --results-directory $(Build.SourcesDirectory)/TestResults
+                -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+          # ── SonarQube Analyze & Publish ──
+          - task: SonarQubeAnalyze@7
+            displayName: "SonarQube Analyze — ContainerApp"
+
+          - task: SonarQubePublish@7
+            displayName: "SonarQube Publish Quality Gate"
+            inputs:
+              pollingTimeoutSec: "300"
+
+          # ── Publish Test Results ──
+          - task: PublishTestResults@2
+            displayName: "Publish Test Results"
+            condition: always()
+            inputs:
+              testResultsFormat: VSTest
+              testResultsFiles: "$(Build.SourcesDirectory)/TestResults/**/*.trx"
+              testRunTitle: "ContainerApp Tests"
+
+          - task: PublishCodeCoverageResults@2
+            displayName: "Publish Code Coverage"
+            condition: always()
+            inputs:
+              summaryFileLocation: "$(Build.SourcesDirectory)/TestResults/**/coverage.opencover.xml"
+
+  # ══════════════════════════════════════════════════════════════════
+  # Stage 3: .NET Function App — Build + Test + SonarQube
+  # ══════════════════════════════════════════════════════════════════
+  - stage: FunctionApp
+    displayName: "Function App — Build & SonarQube"
+    dependsOn: DetectChanges
+    condition: eq(dependencies.DetectChanges.outputs['PathFilter.changes.functionAppChanged'], 'True')
+    jobs:
+      - job: BuildAndScan
+        displayName: "Build, Test, SonarQube Analysis"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: UseDotNet@2
+            displayName: "Install .NET $(DOTNET_VERSION)"
+            inputs:
+              version: $(DOTNET_VERSION)
+
+          # ── SonarQube Prepare ──
+          - task: SonarQubePrepare@7
+            displayName: "SonarQube Prepare — FunctionApp"
+            inputs:
+              SonarQube: $(sonarQubeServiceConnection)
+              scannerMode: dotnet
+              projectKey: "ssdlc-demo-functionapp"
+              projectName: "SSDLC Demo - Function App"
+              extraProperties: |
+                sonar.cs.opencover.reportsPaths=$(Build.SourcesDirectory)/TestResults/**/coverage.opencover.xml
+                sonar.cs.vstest.reportsPaths=$(Build.SourcesDirectory)/TestResults/**/*.trx
+                sonar.coverage.exclusions=**/Program.cs
+                sonar.exclusions=**/bin/**,**/obj/**,**/local.settings.json,**/host.json
+
+          # ── Build ──
+          - task: DotNetCoreCLI@2
+            displayName: "Restore & Build"
+            inputs:
+              command: build
+              projects: |
+                src/FunctionApp/HelloWorld.Functions.csproj
+                tests/FunctionApp.Tests/HelloWorld.Functions.Tests.csproj
+              arguments: "--configuration Release"
+
+          # ── Test with Coverage ──
+          - task: DotNetCoreCLI@2
+            displayName: "Run Tests with Coverage"
+            inputs:
+              command: test
+              projects: "tests/FunctionApp.Tests/HelloWorld.Functions.Tests.csproj"
+              arguments: >-
+                --configuration Release
+                --no-build
+                --logger "trx;LogFileName=functionapp-results.trx"
+                --collect:"XPlat Code Coverage"
+                --results-directory $(Build.SourcesDirectory)/TestResults
+                -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+          # ── SonarQube Analyze & Publish ──
+          - task: SonarQubeAnalyze@7
+            displayName: "SonarQube Analyze — FunctionApp"
+
+          - task: SonarQubePublish@7
+            displayName: "SonarQube Publish Quality Gate"
+            inputs:
+              pollingTimeoutSec: "300"
+
+          # ── Publish Test Results ──
+          - task: PublishTestResults@2
+            displayName: "Publish Test Results"
+            condition: always()
+            inputs:
+              testResultsFormat: VSTest
+              testResultsFiles: "$(Build.SourcesDirectory)/TestResults/**/*.trx"
+              testRunTitle: "FunctionApp Tests"
+
+          - task: PublishCodeCoverageResults@2
+            displayName: "Publish Code Coverage"
+            condition: always()
+            inputs:
+              summaryFileLocation: "$(Build.SourcesDirectory)/TestResults/**/coverage.opencover.xml"
+
+  # ══════════════════════════════════════════════════════════════════
+  # Stage 4: Python API — Build + Test + SonarQube
+  # ══════════════════════════════════════════════════════════════════
+  - stage: PythonApi
+    displayName: "Python API — Build & SonarQube"
+    dependsOn: DetectChanges
+    condition: eq(dependencies.DetectChanges.outputs['PathFilter.changes.pythonApiChanged'], 'True')
+    jobs:
+      - job: BuildAndScan
+        displayName: "Build, Test, SonarQube Analysis"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: UsePythonVersion@0
+            displayName: "Install Python $(PYTHON_VERSION)"
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r src/PythonApi/requirements.txt
+              pip install -r src/PythonApi/requirements-dev.txt
+            displayName: "Install dependencies"
+
+          - script: ruff check src/PythonApi/
+            displayName: "Lint with Ruff"
+
+          # ── Test with Coverage ──
+          - script: |
+              cd tests/PythonApi.Tests
+              pytest \
+                --cov=../../src/PythonApi/app \
+                --cov-report=xml:../../TestResults/python-coverage.xml \
+                --cov-report=term-missing \
+                --junitxml=../../TestResults/python-results.xml \
+                -v
+            displayName: "Run Tests with Coverage"
+
+          # ── SonarQube Prepare + Analyze (CLI scanner for Python) ──
+          - task: SonarQubePrepare@7
+            displayName: "SonarQube Prepare — PythonApi"
+            inputs:
+              SonarQube: $(sonarQubeServiceConnection)
+              scannerMode: CLI
+              configMode: manual
+              cliProjectKey: "ssdlc-demo-pythonapi"
+              cliProjectName: "SSDLC Demo - Python API"
+              cliSources: "src/PythonApi/app"
+              extraProperties: |
+                sonar.python.coverage.reportPaths=$(Build.SourcesDirectory)/TestResults/python-coverage.xml
+                sonar.python.xunit.reportPath=$(Build.SourcesDirectory)/TestResults/python-results.xml
+                sonar.tests=tests/PythonApi.Tests
+                sonar.exclusions=**/__pycache__/**,**/Dockerfile
+                sonar.coverage.exclusions=**/conftest.py,**/test_*.py
+
+          - task: SonarQubeAnalyze@7
+            displayName: "SonarQube Analyze — PythonApi"
+
+          - task: SonarQubePublish@7
+            displayName: "SonarQube Publish Quality Gate"
+            inputs:
+              pollingTimeoutSec: "300"
+
+          # ── Publish Test Results ──
+          - task: PublishTestResults@2
+            displayName: "Publish Test Results"
+            condition: always()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: "$(Build.SourcesDirectory)/TestResults/python-results.xml"
+              testRunTitle: "PythonApi Tests"
+
+          - task: PublishCodeCoverageResults@2
+            displayName: "Publish Code Coverage"
+            condition: always()
+            inputs:
+              summaryFileLocation: "$(Build.SourcesDirectory)/TestResults/python-coverage.xml"
+
+  # ══════════════════════════════════════════════════════════════════
+  # Stage 5: Quality Gate Check (aggregated)
+  # ══════════════════════════════════════════════════════════════════
+  - stage: QualityGate
+    displayName: "Quality Gate — All Components"
+    dependsOn:
+      - ContainerApp
+      - FunctionApp
+      - PythonApi
+    condition: |
+      and(
+        not(failed('ContainerApp')),
+        not(failed('FunctionApp')),
+        not(failed('PythonApi'))
+      )
+    jobs:
+      - job: GateCheck
+        displayName: "Verify all quality gates passed"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - script: |
+              echo "All SonarQube quality gates passed for changed components."
+              echo "Components analyzed based on changed paths:"
+              echo "  - ContainerApp (if changed)"
+              echo "  - FunctionApp  (if changed)"
+              echo "  - PythonApi    (if changed)"
+            displayName: "Quality Gate Summary"

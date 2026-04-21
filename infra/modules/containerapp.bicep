@@ -30,6 +30,17 @@ param infrastructureSubnetId string
 @description('Application Insights connection string')
 param appInsightsConnectionString string
 
+@description('ACR login server (e.g., myacr.azurecr.io). Empty string disables ACR auth.')
+param acrLoginServer string = ''
+
+@description('User-Assigned Managed Identity resource ID for ACR pull')
+param acrPullIdentityId string = ''
+
+// ============================================================================
+// Variables
+// ============================================================================
+var hasAcr = !empty(acrLoginServer) && !empty(acrPullIdentityId)
+
 // ============================================================================
 // Container Apps Environment
 // ============================================================================
@@ -70,13 +81,24 @@ resource helloWorldApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: helloWorldAppName
   location: location
   tags: union(tags, { 'azd-service-name': 'containerapp-hello' })
-  identity: {
+  identity: hasAcr ? {
+    type: 'SystemAssigned, UserAssigned'
+    userAssignedIdentities: {
+      '${acrPullIdentityId}': {}
+    }
+  } : {
     type: 'SystemAssigned'
   }
   properties: {
     managedEnvironmentId: containerAppEnvironment.id
     workloadProfileName: 'Consumption'
     configuration: {
+      registries: hasAcr ? [
+        {
+          server: acrLoginServer
+          identity: acrPullIdentityId
+        }
+      ] : []
       ingress: {
         external: true
         targetPort: 8080
@@ -165,13 +187,24 @@ resource pythonApiApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: pythonApiAppName
   location: location
   tags: union(tags, { 'azd-service-name': 'containerapp-pyapi' })
-  identity: {
+  identity: hasAcr ? {
+    type: 'SystemAssigned, UserAssigned'
+    userAssignedIdentities: {
+      '${acrPullIdentityId}': {}
+    }
+  } : {
     type: 'SystemAssigned'
   }
   properties: {
     managedEnvironmentId: containerAppEnvironment.id
     workloadProfileName: 'Consumption'
     configuration: {
+      registries: hasAcr ? [
+        {
+          server: acrLoginServer
+          identity: acrPullIdentityId
+        }
+      ] : []
       ingress: {
         external: true
         targetPort: 8000

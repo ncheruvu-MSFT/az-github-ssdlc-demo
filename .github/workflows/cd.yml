@@ -213,6 +213,7 @@ jobs:
             infra/main.dev.bicepparam
             containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
             pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+            acrName=${{ env.ACR_NAME }}
           deploymentName: "deploy-dev-${{ github.run_number }}"
 
       # Deploy Function App
@@ -315,6 +316,7 @@ jobs:
             infra/main.staging.bicepparam
             containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
             pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+            acrName=${{ env.ACR_NAME }}
           deploymentName: "deploy-staging-${{ github.run_number }}"
 
       - name: Download Function App artifact
@@ -414,6 +416,7 @@ jobs:
             infra/main.prod.bicepparam
             containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
             pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+            acrName=${{ env.ACR_NAME }}
           deploymentName: "deploy-prod-${{ github.run_number }}"
 
       - name: Download Function App artifact

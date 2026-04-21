@@ -78,7 +78,10 @@ az-github-ssdlc-demo/
 │   │   ├── ci.yml                    # CI: build, test, security scan
 │   │   ├── cd.yml                    # CD: deploy dev → staging → prod
 │   │   ├── codeql.yml                # CodeQL SAST analysis
-│   │   └── dependency-review.yml     # Dependency vulnerability review
+│   │   ├── dependency-review.yml     # Dependency vulnerability review
+│   │   ├── dependabot-auto-merge.yml # Auto-merge patch Dependabot PRs
+│   │   ├── staging-gate.yml          # Staging go/no-go release report
+│   │   └── ado-copilot-bridge.yml    # ADO → GitHub Copilot Agent bridge
 │   ├── dependabot.yml                # Automated dependency updates
 │   ├── CODEOWNERS                    # Required reviewers by path
 │   ├── PULL_REQUEST_TEMPLATE.md      # SSDLC checklist for PRs
@@ -90,7 +93,7 @@ az-github-ssdlc-demo/
 │   │   │   ├── OrderOrchestration.cs # Durable Functions workflow
 │   │   │   └── ServiceBusProcessor.cs# Service Bus triggered functions
 │   │   ├── Program.cs
-│   │   ├── host.json
+│   │   ├── host.json, time
 │   │   └── HelloWorld.Functions.csproj
 │   ├── ContainerApp/                 # C# Minimal API on ACA
 │   │   ├── Program.cs               # Hello world, health, info endpoints
@@ -182,12 +185,13 @@ Developer
     │       ├── All CI checks pass
     │       ├── 2 approvals required
     │       └── Merge to main
-    │
-    └── CD Pipeline (on main merge)
-            ├── Build artifacts + container images
+    │Notation sign container images (supply chain)
             ├── Deploy to DEV (automatic)
             │   └── Smoke tests
             ├── Deploy to STAGING (automatic)
+            │   └── Staging gate report (go/no-go)
+            └── Deploy to PROD (manual approval gate)
+                └── Health checks + Teams notification (automatic)
             │   └── Integration tests
             └── Deploy to PROD (manual approval gate)
                 └── Health checks
@@ -205,6 +209,7 @@ Developer
 | **Bandit** | SAST | Python security | `ci.yml` |
 | **MS Defender for Containers** | Container scan | Docker images | `ci.yml` |
 | **Checkov** | IaC scan | Bicep templates | `ci.yml` |
+| **Notation** | Image signing | Container images | `cd.yml` |
 | **Safety** | SCA | Python dependencies | `ci.yml` |
 | **dotnet audit** | SCA | .NET dependencies | `ci.yml` |
 | **Dependency Review** | SCA | All PRs | `dependency-review.yml` |
@@ -311,8 +316,70 @@ az deployment sub create \
 
 1. **Enable GitHub Advanced Security** (secret scanning, code scanning)
 2. **Create environments**: `dev`, `staging`, `production` (with approval on prod)
-3. **Configure OIDC** for Azure: Create App Registration + Federated Credentials
-4. **Set repository secrets**:
+   - `TEAMS_WEBHOOK_URL` (optional — for Teams deployment notifications)
+5. **Apply branch protection** from `.github/branch-protection.json`
+6. **Enable Dependabot** alerts and security updates
+
+---
+
+## ADO ↔ GitHub Integration
+
+### Work Item Traceability
+
+Azure DevOps Boards links to GitHub via `AB#<id>` references in commits and PRs:
+
+```bash
+git commit -m "feat: add input validation AB#32"
+```
+
+This creates bidirectional traceability: ADO work item → GitHub commit → PR → CI/CD results → deployment.
+
+### ADO → Copilot Agent Bridge
+
+The `ado-copilot-bridge.yml` workflow enables ADO work items to trigger GitHub Copilot Coding Agent:
+
+1. ADO work item dispatches a `repository_dispatch` event to the GitHub repo
+2. GitHub Copilot Agent picks up the task and creates a PR
+3. CI validates the PR automatically
+4. Human reviewer merges
+
+### Staging Gate Report
+
+The `staging-gate.yml` workflow generates a release readiness report before production:
+
+- Verifies all CI checks passed
+- Checks container image signatures (Notation)
+- Validates infrastructure deployment status
+- Produces a go/no-go summary in GitHub Actions
+
+---
+
+## Demo Walkthrough
+
+### Quick Demo Flow (15 min)
+
+1. **Show ADO Board** — Sprint planning with work items linked to GitHub
+2. **Create a feature branch** → push code → open PR
+3. **Watch CI run** — 8 parallel checks (build, test, CodeQL, Defender, Checkov, etc.)
+4. **Show Security tab** — CodeQL findings, Dependabot alerts, secret scanning
+5. **Merge to main** → CD auto-deploys to dev → staging → manual gate → prod
+6. **Show staging gate report** — go/no-go summary
+7. **Verify health endpoints** — `/health`, `/api/hello`, `/api/time`
+
+### API Endpoints Reference
+
+| Service | Endpoint | Purpose |
+|---------|----------|---------|
+| Container App (C#) | `GET /api/hello?name=Demo` | Hello world with input validation |
+| Container App (C#) | `GET /api/time` | UTC time endpoint |
+| Container App (C#) | `GET /api/info` | Environment info |
+| Container App (C#) | `GET /health` | Health check |
+| Python API | `GET /api/hello?name=Demo` | Hello world |
+| Python API | `POST /api/echo` | Echo JSON body |
+| Python API | `GET /api/info` | Environment info |
+| Python API | `GET /health` | Health check |
+| Function App | `GET /api/hello?name=Demo` | Hello world |
+| Function App | `GET /api/health` | Health check |
    - `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
    - `AZURE_CLIENT_ID_PROD`, `AZURE_SUBSCRIPTION_ID_PROD`
    - `ACR_NAME`
