@@ -443,3 +443,101 @@ jobs:
             sleep 10
           done
           echo "::warning::Production health check did not return 200 within timeout"
+
+  # ── Teams Notifications ──────────────────────────────────────
+  notify-teams:
+    name: "Notify Teams"
+    needs: [deploy-dev, deploy-staging, deploy-prod]
+    if: always() && vars.TEAMS_WEBHOOK_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine deployment status
+        id: status
+        run: |
+          DEV="${{ needs.deploy-dev.result }}"
+          STAGING="${{ needs.deploy-staging.result }}"
+          PROD="${{ needs.deploy-prod.result }}"
+
+          if [ "$PROD" = "success" ]; then
+            echo "summary=✅ Production deployment complete" >> $GITHUB_OUTPUT
+            echo "color=good" >> $GITHUB_OUTPUT
+          elif [ "$STAGING" = "success" ]; then
+            echo "summary=⏸️ Staging deployed — awaiting production approval" >> $GITHUB_OUTPUT
+            echo "color=warning" >> $GITHUB_OUTPUT
+          elif [ "$DEV" = "success" ]; then
+            echo "summary=🔧 Dev deployed — staging pending" >> $GITHUB_OUTPUT
+            echo "color=warning" >> $GITHUB_OUTPUT
+          else
+            echo "summary=❌ Deployment failed" >> $GITHUB_OUTPUT
+            echo "color=attention" >> $GITHUB_OUTPUT
+          fi
+
+          echo "dev=$DEV" >> $GITHUB_OUTPUT
+          echo "staging=$STAGING" >> $GITHUB_OUTPUT
+          echo "prod=$PROD" >> $GITHUB_OUTPUT
+
+      - name: Send Teams notification
+        env:
+          TEAMS_WEBHOOK_URL: ${{ vars.TEAMS_WEBHOOK_URL }}
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+
+          cat > teams-payload.json << 'TEAMS_EOF'
+          {
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "type": "AdaptiveCard",
+                  "version": "1.4",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "size": "Large",
+                      "weight": "Bolder",
+                      "text": "SSDLC Demo — Deployment Update"
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "SUMMARY_PLACEHOLDER",
+                      "wrap": true
+                    },
+                    {
+                      "type": "FactSet",
+                      "facts": [
+                        { "title": "Commit", "value": "SHA_PLACEHOLDER" },
+                        { "title": "Dev", "value": "DEV_PLACEHOLDER" },
+                        { "title": "Staging", "value": "STAGING_PLACEHOLDER" },
+                        { "title": "Production", "value": "PROD_PLACEHOLDER" }
+                      ]
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "type": "Action.OpenUrl",
+                      "title": "View Workflow Run",
+                      "url": "URL_PLACEHOLDER"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+          TEAMS_EOF
+
+          # Replace placeholders
+          sed -i "s|SUMMARY_PLACEHOLDER|${{ steps.status.outputs.summary }}|g" teams-payload.json
+          sed -i "s|SHA_PLACEHOLDER|$SHORT_SHA|g" teams-payload.json
+          sed -i "s|DEV_PLACEHOLDER|${{ steps.status.outputs.dev }}|g" teams-payload.json
+          sed -i "s|STAGING_PLACEHOLDER|${{ steps.status.outputs.staging }}|g" teams-payload.json
+          sed -i "s|PROD_PLACEHOLDER|${{ steps.status.outputs.prod }}|g" teams-payload.json
+          sed -i "s|URL_PLACEHOLDER|${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|g" teams-payload.json
+
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d @teams-payload.json \
+            "$TEAMS_WEBHOOK_URL"
+          echo "✅ Teams notification sent"
