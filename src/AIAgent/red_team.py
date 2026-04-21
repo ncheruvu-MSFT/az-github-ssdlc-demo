@@ -20,7 +20,7 @@ from azure.ai.projects.models import (
     AzureAIAgentTarget,
     AgentTaxonomyInput,
     RiskCategory,
-    AgentVersionObject,
+    AgentVersionDetails,
 )
 from azure.ai.projects.models._models import PromptAgentDefinition
 
@@ -31,9 +31,9 @@ def red_team_agent() -> dict:
     Returns:
         dict with status, output file path, and eval IDs.
     """
-    endpoint = os.environ["AZURE_AI_PROJECT_ENDPOINT"]
+    endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
     agent_name = os.environ.get("AGENT_NAME", "ssdlc-demo-agent")
-    model = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o")
+    model = os.environ.get("FOUNDRY_MODEL_NAME", "gpt-4o")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_folder = os.environ.get(
@@ -95,7 +95,7 @@ def red_team_agent() -> dict:
     )
 
     print("Creating evaluation taxonomy...")
-    taxonomy = client.evaluation_taxonomies.create(
+    taxonomy = client.beta.evaluation_taxonomies.create(
         name=agent_name, body=taxonomy_input
     )
 
@@ -203,7 +203,7 @@ def _get_safety_criteria() -> list[dict]:
     ]
 
 
-def _get_tool_descriptions(agent: AgentVersionObject) -> list[dict]:
+def _get_tool_descriptions(agent: AgentVersionDetails) -> list[dict]:
     """Extract tool descriptions from an agent version."""
     tools = agent.definition.get("tools", [])
     descriptions = []

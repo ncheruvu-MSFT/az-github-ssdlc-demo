@@ -27,8 +27,8 @@ def evaluate_agent() -> dict:
     Returns:
         dict with evaluation status and report URL.
     """
-    endpoint = os.environ["AZURE_AI_PROJECT"]
-    model = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o")
+    endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
+    model = os.environ.get("FOUNDRY_MODEL_NAME", "gpt-4o")
 
     credential = DefaultAzureCredential()
     client = AIProjectClient(endpoint=endpoint, credential=credential)

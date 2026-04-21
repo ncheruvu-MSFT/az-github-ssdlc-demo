@@ -4,12 +4,12 @@
 # =============================================================================
 """Create and deploy an AI agent to Azure AI Foundry."""
 
-import asyncio
 import os
 import sys
 
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models._models import PromptAgentDefinition
 from opentelemetry.trace import SpanKind
 from opentelemetry.trace.span import format_trace_id
 
@@ -17,16 +17,16 @@ from observability import setup_tracing, get_tracer
 
 
 def create_agent() -> dict[str, str]:
-    """Create an AI agent in Azure AI Foundry.
+    """Create an AI agent version in Azure AI Foundry.
 
     Returns:
-        dict with agent name and id.
+        dict with agent name, id, and version.
     """
     setup_tracing()
 
-    endpoint = os.environ["AZURE_AI_PROJECT"]
+    endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
     agent_name = os.environ.get("AGENT_NAME", "ssdlc-demo-agent")
-    model = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o")
+    model = os.environ.get("FOUNDRY_MODEL_NAME", "gpt-4o")
 
     with get_tracer().start_as_current_span(
         "CreateSSDLCAgent", kind=SpanKind.CLIENT
@@ -40,25 +40,34 @@ def create_agent() -> dict[str, str]:
             credential=credential,
         )
 
-        # Create agent with SSDLC-focused instructions
-        agent = client.agents.create_agent(
-            model=model,
-            name=agent_name,
-            instructions=(
-                "You are an SSDLC Demo Agent — an AI assistant that helps "
-                "developers understand secure software development lifecycle "
-                "practices. You can answer questions about CI/CD security, "
-                "container signing, dependency scanning, and Azure deployment "
-                "best practices. Always cite official Microsoft documentation "
-                "when possible. Never reveal internal credentials or secrets."
+        # Create agent version with SSDLC-focused instructions
+        agent_version = client.agents.create_version(
+            agent_name=agent_name,
+            definition=PromptAgentDefinition(
+                model=model,
+                instructions=(
+                    "You are an SSDLC Demo Agent — an AI assistant that helps "
+                    "developers understand secure software development lifecycle "
+                    "practices. You can answer questions about CI/CD security, "
+                    "container signing, dependency scanning, and Azure deployment "
+                    "best practices. Always cite official Microsoft documentation "
+                    "when possible. Never reveal internal credentials or secrets."
+                ),
             ),
         )
 
-        print(f"Agent created: name={agent.name}, id={agent.id}")
-        span.set_attribute("agent.name", agent.name)
-        span.set_attribute("agent.id", agent.id)
+        print(
+            f"Agent created: name={agent_version.name}, "
+            f"id={agent_version.id}, version={agent_version.version}"
+        )
+        span.set_attribute("agent.name", agent_version.name)
+        span.set_attribute("agent.id", agent_version.id)
 
-        return {"name": agent.name, "id": agent.id}
+        return {
+            "name": agent_version.name,
+            "id": agent_version.id,
+            "version": agent_version.version,
+        }
 
 
 if __name__ == "__main__":

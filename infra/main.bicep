@@ -140,7 +140,7 @@ module functionApp 'modules/functionapp.bicep' = {
 // Construct ACR values deterministically to avoid null-ref on conditional module outputs
 var acrLoginServerValue = !empty(acrName) ? '${acrName}.azurecr.io' : ''
 var acrPullIdentityIdValue = !empty(acrName)
-  ? resourceId('rg-${projectName}-shared', 'Microsoft.ManagedIdentity/userAssignedIdentities', 'id-acr-pull-${projectName}-${environment}')
+  ? resourceId(subscription().subscriptionId, 'rg-${projectName}-shared', 'Microsoft.ManagedIdentity/userAssignedIdentities', 'id-acr-pull-${projectName}-${environment}')
   : ''
 
 module containerApp 'modules/containerapp.bicep' = {

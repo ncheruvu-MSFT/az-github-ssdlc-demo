@@ -126,8 +126,8 @@ jobs:
 
       - name: Create Agent in Dev
         env:
-          AZURE_AI_PROJECT: ${{ secrets.AZURE_AI_PROJECT_DEV }}
-          AZURE_AI_MODEL_DEPLOYMENT_NAME: ${{ secrets.AZURE_AI_MODEL_DEPLOYMENT }}
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT_DEV }}
+          FOUNDRY_MODEL_NAME: ${{ secrets.FOUNDRY_MODEL_NAME }}
           AGENT_NAME: ssdlc-demo-agent
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }}
         run: |
@@ -138,7 +138,8 @@ jobs:
 
       - name: Test Agent in Dev
         env:
-          AZURE_AI_PROJECT: ${{ secrets.AZURE_AI_PROJECT_DEV }}
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT_DEV }}
+          FOUNDRY_MODEL_NAME: ${{ secrets.FOUNDRY_MODEL_NAME }}
           AGENT_NAME: ssdlc-demo-agent
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }}
         run: |
@@ -185,8 +186,8 @@ jobs:
 
       - name: Run Agent Evaluation
         env:
-          AZURE_AI_PROJECT: ${{ secrets.AZURE_AI_PROJECT_TEST }}
-          AZURE_AI_MODEL_DEPLOYMENT_NAME: ${{ secrets.AZURE_AI_MODEL_DEPLOYMENT }}
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT_TEST }}
+          FOUNDRY_MODEL_NAME: ${{ secrets.FOUNDRY_MODEL_NAME }}
         run: |
           echo "Running agent evaluation in TEST environment..."
           echo "Metrics: Task Completion, Task Adherence, Intent Resolution"
@@ -232,8 +233,8 @@ jobs:
 
       - name: Run Red Team Security Testing
         env:
-          AZURE_AI_PROJECT_ENDPOINT: ${{ secrets.AZURE_AI_PROJECT_ENDPOINT_TEST }}
-          AZURE_AI_MODEL_DEPLOYMENT_NAME: ${{ secrets.AZURE_AI_MODEL_DEPLOYMENT }}
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT_TEST }}
+          FOUNDRY_MODEL_NAME: ${{ secrets.FOUNDRY_MODEL_NAME }}
           AGENT_NAME: ssdlc-demo-agent
         run: |
           echo "Running red team security testing..."
@@ -304,7 +305,8 @@ jobs:
 
       - name: Verify Production Agent
         env:
-          AZURE_AI_PROJECT: ${{ secrets.AZURE_AI_PROJECT_PROD }}
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT_PROD }}
+          FOUNDRY_MODEL_NAME: ${{ secrets.FOUNDRY_MODEL_NAME }}
           AGENT_NAME: ssdlc-demo-agent
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING_PROD }}
         run: |

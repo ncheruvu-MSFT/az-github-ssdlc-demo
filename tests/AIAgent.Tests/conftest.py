@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src", "A
 @pytest.fixture(autouse=True)
 def _set_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set required environment variables for all tests."""
-    monkeypatch.setenv("AZURE_AI_PROJECT", "https://test.services.ai.azure.com/api/projects/test")
-    monkeypatch.setenv("AZURE_AI_PROJECT_ENDPOINT", "https://test.services.ai.azure.com/api/projects/test")
-    monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o")
+    monkeypatch.setenv("FOUNDRY_PROJECT_ENDPOINT", "https://test.services.ai.azure.com/api/projects/test")
+    monkeypatch.setenv("FOUNDRY_MODEL_NAME", "gpt-4o")
     monkeypatch.setenv("AGENT_NAME", "test-agent")

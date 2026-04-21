@@ -5,7 +5,6 @@
 """Test an existing AI agent by sending queries and validating responses."""
 
 import os
-import re
 import sys
 import time
 
@@ -28,8 +27,9 @@ def run_agent(query: str | None = None) -> str | None:
     """
     setup_tracing()
 
-    endpoint = os.environ["AZURE_AI_PROJECT"]
+    endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
     agent_name = os.environ.get("AGENT_NAME", "ssdlc-demo-agent")
+    model = os.environ.get("FOUNDRY_MODEL_NAME", "gpt-4o")
 
     if query is None:
         query = "What are the top 3 OWASP security practices for CI/CD pipelines?"
@@ -42,18 +42,21 @@ def run_agent(query: str | None = None) -> str | None:
 
         credential = DefaultAzureCredential()
         client = AIProjectClient(endpoint=endpoint, credential=credential)
-
-        # Retrieve existing agent
-        agent = client.agents.get(agent_name=agent_name)
-        print(f"Retrieved agent: {agent.name}")
-        span.set_attribute("agent.name", agent.name)
-
         openai_client = client.get_openai_client()
 
-        # Send query
+        print(f"Querying agent: {agent_name}")
+        span.set_attribute("agent.name", agent_name)
+
+        # Send query using agent_reference (SDK v2.0+)
         response = openai_client.responses.create(
+            model=model,
             input=[{"role": "user", "content": query}],
-            extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+            extra_body={
+                "agent_reference": {
+                    "name": agent_name,
+                    "type": "agent_reference",
+                }
+            },
         )
 
         print(f"Response status: {response.status}, id: {response.id}")
@@ -75,7 +78,10 @@ def run_agent(query: str | None = None) -> str | None:
                         "approval_request_id": req.id,
                     }],
                     extra_body={
-                        "agent": {"name": agent.name, "type": "agent_reference"}
+                        "agent_reference": {
+                            "name": agent_name,
+                            "type": "agent_reference",
+                        }
                     },
                 )
 
