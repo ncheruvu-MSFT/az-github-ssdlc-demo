@@ -79,20 +79,12 @@ resource aiServicesDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-previe
       {
         categoryGroup: 'allLogs'
         enabled: true
-        retentionPolicy: {
-          enabled: true
-          days: environment == 'prod' ? 90 : 30
-        }
       }
     ]
     metrics: [
       {
         category: 'AllMetrics'
         enabled: true
-        retentionPolicy: {
-          enabled: true
-          days: environment == 'prod' ? 90 : 30
-        }
       }
     ]
   }
