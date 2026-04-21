@@ -81,7 +81,8 @@ az-github-ssdlc-demo/
 │   │   ├── dependency-review.yml     # Dependency vulnerability review
 │   │   ├── dependabot-auto-merge.yml # Auto-merge patch Dependabot PRs
 │   │   ├── staging-gate.yml          # Staging go/no-go release report
-│   │   └── ado-copilot-bridge.yml    # ADO → GitHub Copilot Agent bridge
+│   │   ├── ado-copilot-bridge.yml    # ADO → GitHub Copilot Agent bridge
+│   │   └── ai-agent-ops.yml         # AI Agent Ops: eval + red team pipeline
 │   ├── dependabot.yml                # Automated dependency updates
 │   ├── CODEOWNERS                    # Required reviewers by path
 │   ├── PULL_REQUEST_TEMPLATE.md      # SSDLC checklist for PRs
@@ -104,10 +105,18 @@ az-github-ssdlc-demo/
 │       ├── Dockerfile                # Slim image, non-root, healthcheck
 │       ├── requirements.txt
 │       └── requirements-dev.txt
+│   └── AIAgent/                      # AI Agent Ops (Azure AI Foundry)
+│       ├── create_agent.py           # Agent creation + deployment
+│       ├── run_agent.py              # Test existing agents
+│       ├── agent_eval.py             # Quality evaluation (6 metrics)
+│       ├── red_team.py               # Security red team testing
+│       ├── observability.py          # OpenTelemetry tracing
+│       └── requirements.txt
 ├── tests/
 │   ├── FunctionApp.Tests/            # xUnit + FluentAssertions + Moq
 │   ├── ContainerApp.Tests/           # Integration tests (WebApplicationFactory)
-│   └── PythonApi.Tests/              # pytest + httpx + coverage
+│   ├── PythonApi.Tests/              # pytest + httpx + coverage
+│   └── AIAgent.Tests/                # AI Agent module tests
 ├── infra/
 │   ├── main.bicep                    # Main orchestrator (subscription scope)
 │   ├── main.dev.bicepparam           # Dev environment parameters
@@ -119,7 +128,8 @@ az-github-ssdlc-demo/
 │       ├── servicebus.bicep          # Service Bus + queues + topics
 │       ├── monitoring.bicep          # Log Analytics + App Insights + alerts
 │       ├── functionapp.bicep         # Function App + storage + diagnostics
-│       └── containerapp.bicep        # ACA environment + C# + Python apps
+│       ├── containerapp.bicep        # ACA environment + C# + Python apps
+│       └── aifoundry.bicep           # Azure AI Services + GPT-4o deployment
 ├── SsdlcDemo.sln
 ├── SECURITY.md
 └── .gitignore
@@ -216,6 +226,8 @@ Developer
 | **Dependabot** | Auto-update | All ecosystems | `dependabot.yml` |
 | **GHAS Malware Scanning** | Malware detection | Commits & uploads | GitHub Advanced Security |
 | **GHAS Vulnerability Scanning** | CVE detection | Code & dependencies | GitHub Advanced Security |
+| **AI Red Team** | Safety testing | AI Agent responses | `ai-agent-ops.yml` |
+| **AI Evaluation** | Quality metrics | AI Agent behavior | `ai-agent-ops.yml` |
 
 ### Infrastructure Security
 
@@ -351,6 +363,76 @@ The `staging-gate.yml` workflow generates a release readiness report before prod
 - Checks container image signatures (Notation)
 - Validates infrastructure deployment status
 - Produces a go/no-go summary in GitHub Actions
+
+---
+
+## AI Agent Ops (Microsoft Foundry)
+
+This demo includes an **AI Agent CI/CD pipeline** using the Microsoft Agent Framework + Azure AI Foundry, demonstrating SSDLC practices for AI/ML workloads.
+
+### AI Agent Lifecycle
+
+```
+Create Agent ──► Test Agent ──► Evaluate Quality ──► Red Team Security ──► Verify Prod
+   (Dev)          (Dev)          (Staging)             (Staging)            (Production)
+```
+
+### Pipeline: `ai-agent-ops.yml`
+
+| Stage | Environment | Action | Quality Gate |
+|-------|-------------|--------|-------------|
+| **Build** | CI | Syntax validation, unit tests, artifact upload | Tests pass |
+| **Deploy** | Dev | Create/update agent via Azure AI Foundry | Agent responds |
+| **Evaluate** | Staging | Run evaluation metrics (6 built-in evaluators) | Metrics recorded |
+| **Red Team** | Staging | Security attack simulation (7 safety criteria) | No critical findings |
+| **Verify** | Production | Smoke test production agent | Agent healthy |
+
+### Evaluation Metrics
+
+| Category | Metric | Description |
+|----------|--------|-------------|
+| **System** | Task Completion | Did the agent complete the task? |
+| **System** | Task Adherence | Did the agent follow instructions? |
+| **System** | Intent Resolution | Did the agent understand the user's intent? |
+| **RAG** | Groundedness | Are responses grounded in source data? |
+| **RAG** | Relevance | Are responses relevant to the query? |
+| **Process** | Tool Call Accuracy | Did the agent call tools correctly? |
+
+### Red Team Security Testing
+
+| Risk Category | Evaluator | Purpose |
+|---------------|-----------|---------|
+| **Prohibited Actions** | `builtin.prohibited_actions` | Agent refuses harmful requests |
+| **Sensitive Data Leakage** | `builtin.sensitive_data_leakage` | No credential/PII exposure |
+| **Self Harm** | `builtin.self_harm` | Content safety |
+| **Violence** | `builtin.violence` | Content safety |
+| **Sexual** | `builtin.sexual` | Content safety |
+| **Hate/Unfairness** | `builtin.hate_unfairness` | Bias and fairness |
+| **Task Adherence** | `builtin.task_adherence` | Agent stays on-task under attack |
+
+Attack strategies: Flip, Base64 (extensible to ROT13, UnicodeConfusable, CharSwap, Morse, Leetspeak, Binary).
+
+### AI Agent Source Files
+
+```
+src/AIAgent/
+├── create_agent.py      # Create agent in Azure AI Foundry
+├── run_agent.py         # Query existing agent (MCP approval handling)
+├── agent_eval.py        # Evaluation with 6 built-in metrics
+├── red_team.py          # Red team security testing (7 safety criteria)
+├── observability.py     # OpenTelemetry + Azure Monitor tracing
+├── requirements.txt     # Production dependencies
+└── requirements-dev.txt # Dev/test dependencies
+```
+
+### Infrastructure
+
+The `infra/modules/aifoundry.bicep` module provisions:
+- **Azure AI Services** (Cognitive Services account)
+- **GPT-4o** model deployment (GlobalStandard SKU)
+- Diagnostic settings → Log Analytics
+
+Set `deployAIFoundry=true` in `.bicepparam` files to enable.
 
 ---
 

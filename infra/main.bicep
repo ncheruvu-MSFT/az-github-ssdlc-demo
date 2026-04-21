@@ -24,6 +24,9 @@ param pythonApiImage string = 'mcr.microsoft.com/azuredocs/containerapps-hellowo
 @description('ACR name for container image pull authentication (leave empty to skip ACR config)')
 param acrName string = ''
 
+@description('Deploy Azure AI Foundry resources for AI Agent Ops')
+param deployAIFoundry bool = false
+
 // ============================================================================
 // Variables
 // ============================================================================
@@ -159,6 +162,23 @@ module containerApp 'modules/containerapp.bicep' = {
   }
 }
 
+// AI Foundry (Azure AI Services + GPT-4o for agent ops)
+module aiFoundry 'modules/aifoundry.bicep' = if (deployAIFoundry) {
+  scope: rg
+  name: 'aifoundry-${environment}'
+  params: {
+    location: location
+    environment: environment
+    projectName: projectName
+    tags: tags
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+  }
+}
+
+// AI Foundry outputs — deterministic to avoid null-ref on conditional module
+var aiServicesNameValue = 'ai-${projectName}-${environment}'
+
 // ============================================================================
 // Outputs
 // ============================================================================
@@ -169,3 +189,5 @@ output containerAppUrl string = containerApp.outputs.helloWorldUrl
 output pythonApiUrl string = containerApp.outputs.pythonApiUrl
 output keyVaultName string = keyVault.outputs.keyVaultName
 output serviceBusNamespace string = serviceBus.outputs.namespaceName
+output aiServicesEndpoint string = deployAIFoundry ? 'https://${aiServicesNameValue}.cognitiveservices.azure.com/' : ''
+output aiModelDeploymentName string = deployAIFoundry ? 'gpt-4o' : ''

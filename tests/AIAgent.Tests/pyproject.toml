@@ -1,0 +1,15 @@
+[project]
+name = "aiagent-tests"
+version = "0.1.0"
+description = "Tests for SSDLC AI Agent module"
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = "test_*.py"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["../../src/AIAgent"]
+
+[tool.coverage.report]
+fail_under = 60

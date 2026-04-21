@@ -1,0 +1,10 @@
+# =============================================================================
+# AI Agent — Python Dependencies
+# Azure AI Foundry SDK + Evaluation + OpenTelemetry
+# =============================================================================
+azure-ai-projects>=2.0.0b1
+azure-identity>=1.19.0
+azure-monitor-opentelemetry>=1.6.0
+opentelemetry-api>=1.27.0
+openai>=1.58.0
+python-dotenv>=1.0.1
