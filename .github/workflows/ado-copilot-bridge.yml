@@ -93,19 +93,33 @@ jobs:
               `_Auto-created from Azure DevOps Work Item #${adoId} via ADO → Copilot Agent Bridge._`
             ].join('\n');
 
+            // Step 1: Create the issue without assignees first
             const issue = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `[ADO #${adoId}] ${title}`,
               body: body,
-              assignees: ['copilot'],
               labels: ['copilot-agent', 'ado-linked']
             });
 
+            console.log(`Created Issue #${issue.data.number}: ${issue.data.html_url}`);
+
+            // Step 2: Try to assign Copilot coding agent
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.data.number,
+                assignees: ['copilot']
+              });
+              console.log('Copilot coding agent assigned successfully.');
+            } catch (assignError) {
+              console.log(`Note: Could not assign copilot directly (${assignError.message}).`);
+              console.log('Copilot coding agent can be assigned manually from the issue page.');
+            }
+
             core.setOutput('issue_number', issue.data.number);
             core.setOutput('issue_url', issue.data.html_url);
-            console.log(`✅ Created Issue #${issue.data.number}: ${issue.data.html_url}`);
-            console.log(`🤖 Copilot Coding Agent assigned — it will autonomously implement the task.`);
 
       - name: Summary
         run: |
