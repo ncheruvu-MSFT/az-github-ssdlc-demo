@@ -1,0 +1,126 @@
+name: "ADO → Copilot Agent Bridge"
+
+# Bridges Azure DevOps work items to GitHub Copilot Coding Agent.
+# Flow: ADO Task → repository_dispatch/workflow_dispatch → GitHub Issue → Copilot Agent → PR → CI → ADO linked
+on:
+  repository_dispatch:
+    types: [ado-task-created]
+
+  workflow_dispatch:
+    inputs:
+      ado_work_item_id:
+        description: "ADO Work Item ID (e.g. 33)"
+        required: true
+        type: string
+      title:
+        description: "Task title for the GitHub Issue"
+        required: true
+        type: string
+      description:
+        description: "Detailed task description (Copilot uses this to code)"
+        required: true
+        type: string
+      branch_base:
+        description: "Base branch for Copilot to branch from"
+        required: false
+        type: string
+        default: "develop"
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  create-copilot-issue:
+    name: "Create Issue → Assign Copilot Agent"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract work item details
+        id: extract
+        run: |
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            echo "ado_id=${{ github.event.client_payload.ado_work_item_id }}" >> "$GITHUB_OUTPUT"
+            echo "title=${{ github.event.client_payload.title }}" >> "$GITHUB_OUTPUT"
+            # Description may be multiline — use heredoc
+            cat <<'EOF' >> "$GITHUB_OUTPUT"
+          description<<DESCEND
+          ${{ github.event.client_payload.description }}
+          DESCEND
+          EOF
+            echo "base_branch=${{ github.event.client_payload.branch_base || 'develop' }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ado_id=${{ inputs.ado_work_item_id }}" >> "$GITHUB_OUTPUT"
+            echo "title=${{ inputs.title }}" >> "$GITHUB_OUTPUT"
+            cat <<'EOF' >> "$GITHUB_OUTPUT"
+          description<<DESCEND
+          ${{ inputs.description }}
+          DESCEND
+          EOF
+            echo "base_branch=${{ inputs.branch_base }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Issue for Copilot
+        uses: actions/github-script@v7
+        id: create-issue
+        with:
+          script: |
+            const adoId = '${{ steps.extract.outputs.ado_id }}';
+            const title = '${{ steps.extract.outputs.title }}';
+            const baseBranch = '${{ steps.extract.outputs.base_branch }}';
+            const description = `${{ steps.extract.outputs.description }}`;
+
+            const body = [
+              `## Azure DevOps Work Item: AB#${adoId}`,
+              '',
+              '### Task Description',
+              description,
+              '',
+              '### Implementation Requirements',
+              `- Branch from \`${baseBranch}\``,
+              '- Follow existing code patterns and project conventions',
+              '- Write unit/integration tests for all new code',
+              '- Ensure all existing tests continue to pass',
+              `- Reference \`AB#${adoId}\` in the PR description and commit messages`,
+              '',
+              '### Project Context',
+              '- .NET 8 Container App: `src/ContainerApp/` (Minimal API)',
+              '- .NET 8 Azure Functions: `src/FunctionApp/` (Isolated Worker)',
+              '- Python FastAPI: `src/PythonApi/`',
+              '- Tests: `tests/ContainerApp.Tests/`, `tests/FunctionApp.Tests/`, `tests/PythonApi.Tests/`',
+              '- Infrastructure: `infra/` (Bicep)',
+              '',
+              '---',
+              `_Auto-created from Azure DevOps Work Item #${adoId} via ADO → Copilot Agent Bridge._`
+            ].join('\n');
+
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[ADO #${adoId}] ${title}`,
+              body: body,
+              assignees: ['copilot'],
+              labels: ['copilot-agent', 'ado-linked']
+            });
+
+            core.setOutput('issue_number', issue.data.number);
+            core.setOutput('issue_url', issue.data.html_url);
+            console.log(`✅ Created Issue #${issue.data.number}: ${issue.data.html_url}`);
+            console.log(`🤖 Copilot Coding Agent assigned — it will autonomously implement the task.`);
+
+      - name: Summary
+        run: |
+          echo "## 🔗 ADO → GitHub Copilot Agent Bridge" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ADO Work Item | [AB#${{ steps.extract.outputs.ado_id }}](https://dev.azure.com/ncheruvu0468/NagaDevops/_workitems/edit/${{ steps.extract.outputs.ado_id }}) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| GitHub Issue | #${{ steps.create-issue.outputs.issue_number }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Assigned To | \`copilot\` (Coding Agent) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Base Branch | \`${{ steps.extract.outputs.base_branch }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Copilot Coding Agent will now autonomously:" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. 🔍 Analyze the codebase" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. 📝 Create an implementation plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. 💻 Write the code and tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "4. 🔀 Open a Pull Request" >> "$GITHUB_STEP_SUMMARY"
+          echo "5. ✅ CI pipeline validates the changes" >> "$GITHUB_STEP_SUMMARY"
