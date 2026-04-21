@@ -68,6 +68,7 @@ module keyVault 'modules/keyvault.bicep' = {
     tags: tags
     vnetId: networking.outputs.vnetId
     privateEndpointSubnetId: networking.outputs.privateEndpointSubnetId
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
   }
 }
 
@@ -82,6 +83,7 @@ module serviceBus 'modules/servicebus.bicep' = {
     tags: tags
     vnetId: networking.outputs.vnetId
     privateEndpointSubnetId: networking.outputs.privateEndpointSubnetId
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
   }
 }
 
@@ -111,6 +113,7 @@ module functionApp 'modules/functionapp.bicep' = {
     serviceBusConnectionString: serviceBus.outputs.connectionString
     subnetId: networking.outputs.functionAppSubnetId
     keyVaultName: keyVault.outputs.keyVaultName
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
   }
 }
 

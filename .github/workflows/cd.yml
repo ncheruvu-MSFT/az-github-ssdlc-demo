@@ -14,12 +14,14 @@ on:
 permissions:
   id-token: write    # OIDC for Azure login
   contents: read
+  packages: write    # Container image signing
 
 env:
   DOTNET_VERSION: "8.0.x"
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   ACR_NAME: ${{ secrets.ACR_NAME }}
+  DEPLOY_REGION: "australiaeast"
 
 jobs:
   # ── Build Artifacts ────────────────────────────────────────────
@@ -85,6 +87,62 @@ jobs:
           push: true
           tags: ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
 
+      # ── Container Image Signing with Notation (Notary v2) ──
+      - name: Install Notation CLI
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: "1.2.0"
+
+      - name: Generate signing key (self-signed for demo)
+        run: |
+          notation cert generate-test "ssdlc-demo-signing-key"
+          echo "Notation signing key generated for demo purposes"
+
+      - name: Sign Container App image
+        run: |
+          notation sign \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }} \
+            --key "ssdlc-demo-signing-key"
+          echo "✅ Container App image signed"
+
+      - name: Sign Python API image
+        run: |
+          notation sign \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }} \
+            --key "ssdlc-demo-signing-key"
+          echo "✅ Python API image signed"
+
+      - name: Export trust policy for verification
+        run: |
+          # Create trust policy for downstream verification
+          mkdir -p ./notation-config
+          cat > ./notation-config/trustpolicy.json << 'EOF'
+          {
+            "version": "1.0",
+            "trustPolicies": [
+              {
+                "name": "ssdlc-demo-images",
+                "registryScopes": [ "${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/*" ],
+                "signatureVerification": {
+                  "level": "strict"
+                },
+                "trustStores": [ "ca:ssdlc-demo-signing-key" ],
+                "trustedIdentities": [ "*" ]
+              }
+            ]
+          }
+          EOF
+          # Copy certs for downstream jobs
+          cp -r ~/.config/notation ./notation-config/notation-home || true
+          echo "Trust policy created"
+
+      - name: Upload signing artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: notation-config
+          path: ./notation-config
+          retention-days: 1
+
   # ── Deploy to Dev ──────────────────────────────────────────────
   deploy-dev:
     name: "Deploy to Dev"
@@ -102,14 +160,50 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      # ── Verify container signatures before deploy ──
+      - name: Install Notation CLI
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: "1.2.0"
+
+      - name: Download signing config
+        uses: actions/download-artifact@v4
+        with:
+          name: notation-config
+          path: ./notation-config
+
+      - name: Restore Notation trust store
+        run: |
+          mkdir -p ~/.config/notation
+          cp -r ./notation-config/notation-home/* ~/.config/notation/ || true
+          cp ./notation-config/trustpolicy.json ~/.config/notation/trustpolicy.json
+
+      - name: Verify Container App image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+          echo "✅ Container App image signature verified"
+
+      - name: Verify Python API image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+          echo "✅ Python API image signature verified"
+
       # Deploy Infrastructure
       - name: Deploy Bicep (dev)
         uses: azure/arm-deploy@v2
         with:
           scope: subscription
-          region: australiaeast
+          region: ${{ env.DEPLOY_REGION }}
           template: infra/main.bicep
-          parameters: infra/main.dev.bicepparam
+          parameters: >-
+            infra/main.dev.bicepparam
+            containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+            pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           deploymentName: "deploy-dev-${{ github.run_number }}"
 
       # Deploy Function App
@@ -143,8 +237,14 @@ jobs:
       # Smoke test
       - name: Smoke test (dev)
         run: |
-          sleep 30
-          curl -sf https://func-ssdlcdemo-dev.azurewebsites.net/api/health || echo "Function App health check pending"
+          echo "Waiting for deployment to stabilize..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://func-ssdlcdemo-dev.azurewebsites.net/api/health 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then echo "Health check passed!"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::Health check did not return 200 within timeout — deployment may still be starting"
 
   # ── Deploy to Staging ──────────────────────────────────────────
   deploy-staging:
@@ -163,13 +263,49 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      # ── Verify container signatures before deploy ──
+      - name: Install Notation CLI
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: "1.2.0"
+
+      - name: Download signing config
+        uses: actions/download-artifact@v4
+        with:
+          name: notation-config
+          path: ./notation-config
+
+      - name: Restore Notation trust store
+        run: |
+          mkdir -p ~/.config/notation
+          cp -r ./notation-config/notation-home/* ~/.config/notation/ || true
+          cp ./notation-config/trustpolicy.json ~/.config/notation/trustpolicy.json
+
+      - name: Verify Container App image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+          echo "✅ Container App image signature verified"
+
+      - name: Verify Python API image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+          echo "✅ Python API image signature verified"
+
       - name: Deploy Bicep (staging)
         uses: azure/arm-deploy@v2
         with:
           scope: subscription
-          region: australiaeast
+          region: ${{ env.DEPLOY_REGION }}
           template: infra/main.bicep
-          parameters: infra/main.staging.bicepparam
+          parameters: >-
+            infra/main.staging.bicepparam
+            containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+            pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           deploymentName: "deploy-staging-${{ github.run_number }}"
 
       - name: Download Function App artifact
@@ -198,6 +334,17 @@ jobs:
             --resource-group rg-ssdlcdemo-staging \
             --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
 
+      - name: Smoke test (staging)
+        run: |
+          echo "Waiting for staging deployment to stabilize..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://func-ssdlcdemo-staging.azurewebsites.net/api/health 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then echo "Health check passed!"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::Staging health check did not return 200 within timeout"
+
   # ── Deploy to Production ───────────────────────────────────────
   deploy-prod:
     name: "Deploy to Production"
@@ -215,13 +362,49 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
 
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      # ── Verify container signatures before deploy (mandatory for prod) ──
+      - name: Install Notation CLI
+        uses: notaryproject/notation-action/setup@v1
+        with:
+          version: "1.2.0"
+
+      - name: Download signing config
+        uses: actions/download-artifact@v4
+        with:
+          name: notation-config
+          path: ./notation-config
+
+      - name: Restore Notation trust store
+        run: |
+          mkdir -p ~/.config/notation
+          cp -r ./notation-config/notation-home/* ~/.config/notation/ || true
+          cp ./notation-config/trustpolicy.json ~/.config/notation/trustpolicy.json
+
+      - name: Verify Container App image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+          echo "✅ Container App image signature verified — PRODUCTION"
+
+      - name: Verify Python API image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+          echo "✅ Python API image signature verified — PRODUCTION"
+
       - name: Deploy Bicep (prod)
         uses: azure/arm-deploy@v2
         with:
           scope: subscription
-          region: australiaeast
+          region: ${{ env.DEPLOY_REGION }}
           template: infra/main.bicep
-          parameters: infra/main.prod.bicepparam
+          parameters: >-
+            infra/main.prod.bicepparam
+            containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+            pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           deploymentName: "deploy-prod-${{ github.run_number }}"
 
       - name: Download Function App artifact
@@ -249,3 +432,14 @@ jobs:
             --name ca-pyapi-ssdlcdemo-prod \
             --resource-group rg-ssdlcdemo-prod \
             --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+      - name: Smoke test (prod)
+        run: |
+          echo "Waiting for production deployment to stabilize..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://func-ssdlcdemo-prod.azurewebsites.net/api/health 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then echo "Production health check passed!"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::Production health check did not return 200 within timeout"
