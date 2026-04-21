@@ -130,60 +130,78 @@ jobs:
       # ── Generate Report ────────────────────────────────────────
       - name: Generate Go/No-Go Report
         id: report
+        env:
+          CI_CONCLUSION: ${{ steps.ci_status.outputs.ci_conclusion }}
+          CI_SHA: ${{ steps.ci_status.outputs.ci_sha }}
+          CI_URL: ${{ steps.ci_status.outputs.ci_url }}
+          CD_CONCLUSION: ${{ steps.cd_status.outputs.cd_conclusion }}
+          CD_URL: ${{ steps.cd_status.outputs.cd_url }}
+          CODEQL_OPEN: ${{ steps.codeql.outputs.open_alerts }}
+          DEPENDABOT_OPEN: ${{ steps.dependabot.outputs.open_alerts }}
+          TEST_DOTNET: ${{ steps.tests.outputs.dotnet }}
+          TEST_PYTHON: ${{ steps.tests.outputs.python }}
+          TEST_SECURITY: ${{ steps.tests.outputs.security }}
+          TEST_CONTAINER: ${{ steps.tests.outputs.container }}
+          TEST_BICEP: ${{ steps.tests.outputs.bicep }}
+          ADO_TOTAL: ${{ steps.ado.outputs.total }}
+          ADO_DONE: ${{ steps.ado.outputs.done }}
+          ADO_IN_PROGRESS: ${{ steps.ado.outputs.in_progress }}
+          ADO_TODO: ${{ steps.ado.outputs.todo }}
         run: |
-          # Determine overall gate status
-          CI_PASS="${{ steps.ci_status.outputs.ci_conclusion }}"
-          CODEQL_ALERTS="${{ steps.codeql.outputs.open_alerts }}"
-          DEPENDABOT_ALERTS="${{ steps.dependabot.outputs.open_alerts }}"
-
+          # Determine gate status
           GATE_STATUS="GO ✅"
+          BLOCKERS_SECTION=""
+
           BLOCKERS=""
-
-          if [ "$CI_PASS" != "success" ]; then
+          if [ "$CI_CONCLUSION" != "success" ]; then
             GATE_STATUS="NO-GO ❌"
-            BLOCKERS="${BLOCKERS}\n- CI pipeline did not pass (status: $CI_PASS)"
+            BLOCKERS="$BLOCKERS
+          - CI pipeline did not pass (status: $CI_CONCLUSION)"
           fi
 
-          if [ "$CODEQL_ALERTS" != "0" ] && [ "$CODEQL_ALERTS" != "N/A" ]; then
+          if [ "$CODEQL_OPEN" != "0" ] && [ "$CODEQL_OPEN" != "N/A" ]; then
             GATE_STATUS="NO-GO ❌"
-            BLOCKERS="${BLOCKERS}\n- $CODEQL_ALERTS open CodeQL security alerts"
+            BLOCKERS="$BLOCKERS
+          - $CODEQL_OPEN open CodeQL security alerts"
           fi
 
-          if [ "$DEPENDABOT_ALERTS" != "0" ] && [ "$DEPENDABOT_ALERTS" != "N/A" ]; then
-            # Dependabot alerts are a warning, not a blocker
-            BLOCKERS="${BLOCKERS}\n- ⚠️ $DEPENDABOT_ALERTS open Dependabot alerts (review recommended)"
+          if [ "$DEPENDABOT_OPEN" != "0" ] && [ "$DEPENDABOT_OPEN" != "N/A" ]; then
+            BLOCKERS="$BLOCKERS
+          - ⚠️ $DEPENDABOT_OPEN open Dependabot alerts (review recommended)"
           fi
 
-          EMOJI_PASS="✅"
-          EMOJI_FAIL="❌"
-          EMOJI_NA="⚪"
+          if [ -n "$BLOCKERS" ]; then
+            BLOCKERS_SECTION="### Blockers
+          $BLOCKERS"
+          fi
 
-          status_icon() {
-            case "$1" in
-              success) echo "$EMOJI_PASS" ;;
-              failure) echo "$EMOJI_FAIL" ;;
-              *) echo "$EMOJI_NA" ;;
-            esac
-          }
+          # Status icons
+          icon() { case "$1" in success) echo "✅" ;; failure) echo "❌" ;; *) echo "⚪" ;; esac; }
+          DOTNET_ICON=$(icon "$TEST_DOTNET")
+          PYTHON_ICON=$(icon "$TEST_PYTHON")
+          SECURITY_ICON=$(icon "$TEST_SECURITY")
+          CONTAINER_ICON=$(icon "$TEST_CONTAINER")
+          BICEP_ICON=$(icon "$TEST_BICEP")
 
-          DOTNET_ICON=$(status_icon "${{ steps.tests.outputs.dotnet }}")
-          PYTHON_ICON=$(status_icon "${{ steps.tests.outputs.python }}")
-          SECURITY_ICON=$(status_icon "${{ steps.tests.outputs.security }}")
-          CONTAINER_ICON=$(status_icon "${{ steps.tests.outputs.container }}")
-          BICEP_ICON=$(status_icon "${{ steps.tests.outputs.bicep }}")
+          REPORT_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
 
-          cat > staging-report.md << REPORT
+          cat > staging-report.md << 'ENDOFTEMPLATE'
+          # 🚦 Staging Go/No-Go Report
+          ENDOFTEMPLATE
+
+          # Build report with explicit echo to avoid heredoc issues
+          cat > staging-report.md << ENDREPORT
           # 🚦 Staging Go/No-Go Report
 
-          **Release Commit:** \`${{ steps.ci_status.outputs.ci_sha }}\`
-          **Report Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
+          **Release Commit:** \`${CI_SHA}\`
+          **Report Date:** ${REPORT_DATE}
           **Repository:** ${{ github.repository }}
 
           ---
 
-          ## Overall Verdict: $GATE_STATUS
+          ## Overall Verdict: ${GATE_STATUS}
 
-          $(if [ -n "$BLOCKERS" ]; then echo -e "### Blockers\n$BLOCKERS"; fi)
+          ${BLOCKERS_SECTION}
 
           ---
 
@@ -191,20 +209,20 @@ jobs:
 
           | Check | Status | Result |
           |-------|--------|--------|
-          | .NET Build & Test | $DOTNET_ICON | ${{ steps.tests.outputs.dotnet }} |
-          | Python Build & Test | $PYTHON_ICON | ${{ steps.tests.outputs.python }} |
-          | Security Scanning (SSDLC) | $SECURITY_ICON | ${{ steps.tests.outputs.security }} |
-          | Container Image Scan | $CONTAINER_ICON | ${{ steps.tests.outputs.container }} |
-          | Bicep Lint & Validate | $BICEP_ICON | ${{ steps.tests.outputs.bicep }} |
+          | .NET Build & Test | ${DOTNET_ICON} | ${TEST_DOTNET} |
+          | Python Build & Test | ${PYTHON_ICON} | ${TEST_PYTHON} |
+          | Security Scanning (SSDLC) | ${SECURITY_ICON} | ${TEST_SECURITY} |
+          | Container Image Scan | ${CONTAINER_ICON} | ${TEST_CONTAINER} |
+          | Bicep Lint & Validate | ${BICEP_ICON} | ${TEST_BICEP} |
 
-          **CI Run:** ${{ steps.ci_status.outputs.ci_url }}
+          **CI Run:** ${CI_URL}
 
           ## 2. Security Posture
 
           | Category | Open Alerts |
           |----------|-------------|
-          | CodeQL (SAST) | ${{ steps.codeql.outputs.open_alerts }} |
-          | Dependabot (SCA) | ${{ steps.dependabot.outputs.open_alerts }} |
+          | CodeQL (SAST) | ${CODEQL_OPEN} |
+          | Dependabot (SCA) | ${DEPENDABOT_OPEN} |
           | Container Scan (MS Defender) | Reviewed in CI |
           | IaC Scan (Checkov) | Reviewed in CI |
 
@@ -220,25 +238,25 @@ jobs:
 
           | Environment | Status | CD Run |
           |-------------|--------|--------|
-          | Dev | ${{ steps.cd_status.outputs.cd_conclusion || 'pending' }} | ${{ steps.cd_status.outputs.cd_url }} |
-          | Staging | ${{ steps.cd_status.outputs.cd_conclusion || 'pending' }} | Progressive after dev |
+          | Dev | ${CD_CONCLUSION:-pending} | ${CD_URL} |
+          | Staging | ${CD_CONCLUSION:-pending} | Progressive after dev |
           | Production | ⏸️ Awaiting approval | Requires manual gate |
 
           ## 5. Container Image Integrity
 
           | Image | Signed | Verified |
           |-------|--------|----------|
-          | containerapp:\${{ github.sha }} | ✅ Notation v2 | Verified at each stage |
-          | pythonapi:\${{ github.sha }} | ✅ Notation v2 | Verified at each stage |
+          | containerapp:${CI_SHA:0:7} | ✅ Notation v2 | Verified at each stage |
+          | pythonapi:${CI_SHA:0:7} | ✅ Notation v2 | Verified at each stage |
 
           ## 6. ADO Sprint Progress
 
           | Metric | Count |
           |--------|-------|
-          | Total Work Items | ${{ steps.ado.outputs.total }} |
-          | Done | ${{ steps.ado.outputs.done }} |
-          | In Progress | ${{ steps.ado.outputs.in_progress }} |
-          | To Do | ${{ steps.ado.outputs.todo }} |
+          | Total Work Items | ${ADO_TOTAL} |
+          | Done | ${ADO_DONE} |
+          | In Progress | ${ADO_IN_PROGRESS} |
+          | To Do | ${ADO_TODO} |
 
           ## 7. SSDLC Compliance Checklist
 
@@ -261,7 +279,7 @@ jobs:
           **Delivery Plan:** [SSDLC Release Plan](https://dev.azure.com/ncheruvu0468/NagaDevops/_boards/plans/7e283641-ce92-423c-aea0-fe086a4d8144)
 
           > Report generated by GitHub Actions — Staging Gate Workflow
-          REPORT
+          ENDREPORT
 
           echo "gate_status=$GATE_STATUS" >> $GITHUB_OUTPUT
 
