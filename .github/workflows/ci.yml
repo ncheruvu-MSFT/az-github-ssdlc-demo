@@ -195,7 +195,12 @@ jobs:
   container-scan:
     name: "Container Image Scan"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: containerapp
@@ -211,19 +216,21 @@ jobs:
       - name: Build container image
         run: docker build -t ${{ matrix.name }}:scan -f ${{ matrix.dockerfile }} ${{ matrix.context }}
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+      - name: Microsoft Defender for DevOps container scan
+        uses: microsoft/security-devops-action@v1
+        id: defender
+        env:
+          GDN_TRIVY_ACTION: image
+          GDN_TRIVY_TARGET: ${{ matrix.name }}:scan
         with:
-          image-ref: "${{ matrix.name }}:scan"
-          format: "sarif"
-          output: "trivy-${{ matrix.name }}.sarif"
-          severity: "CRITICAL,HIGH"
+          tools: trivy
+        continue-on-error: true
 
-      - name: Upload Trivy scan results
+      - name: Upload scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && steps.defender.outputs.sarifFile != ''
         with:
-          sarif_file: "trivy-${{ matrix.name }}.sarif"
+          sarif_file: ${{ steps.defender.outputs.sarifFile }}
 
   # ── Infrastructure Validation ──────────────────────────────────
   infra-validate:

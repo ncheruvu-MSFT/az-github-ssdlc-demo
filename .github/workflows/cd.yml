@@ -21,6 +21,7 @@ env:
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   ACR_NAME: ${{ secrets.ACR_NAME }}
+  DEPLOY_REGION: "australiaeast"
 
 jobs:
   # ── Build Artifacts ────────────────────────────────────────────
@@ -197,9 +198,12 @@ jobs:
         uses: azure/arm-deploy@v2
         with:
           scope: subscription
-          region: australiaeast
+          region: ${{ env.DEPLOY_REGION }}
           template: infra/main.bicep
-          parameters: infra/main.dev.bicepparam
+          parameters: >-
+            infra/main.dev.bicepparam
+            containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+            pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           deploymentName: "deploy-dev-${{ github.run_number }}"
 
       # Deploy Function App
@@ -233,8 +237,14 @@ jobs:
       # Smoke test
       - name: Smoke test (dev)
         run: |
-          sleep 30
-          curl -sf https://func-ssdlcdemo-dev.azurewebsites.net/api/health || echo "Function App health check pending"
+          echo "Waiting for deployment to stabilize..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://func-ssdlcdemo-dev.azurewebsites.net/api/health 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then echo "Health check passed!"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::Health check did not return 200 within timeout — deployment may still be starting"
 
   # ── Deploy to Staging ──────────────────────────────────────────
   deploy-staging:
@@ -290,9 +300,12 @@ jobs:
         uses: azure/arm-deploy@v2
         with:
           scope: subscription
-          region: australiaeast
+          region: ${{ env.DEPLOY_REGION }}
           template: infra/main.bicep
-          parameters: infra/main.staging.bicepparam
+          parameters: >-
+            infra/main.staging.bicepparam
+            containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+            pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           deploymentName: "deploy-staging-${{ github.run_number }}"
 
       - name: Download Function App artifact
@@ -320,6 +333,17 @@ jobs:
             --name ca-pyapi-ssdlcdemo-staging \
             --resource-group rg-ssdlcdemo-staging \
             --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+      - name: Smoke test (staging)
+        run: |
+          echo "Waiting for staging deployment to stabilize..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://func-ssdlcdemo-staging.azurewebsites.net/api/health 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then echo "Health check passed!"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::Staging health check did not return 200 within timeout"
 
   # ── Deploy to Production ───────────────────────────────────────
   deploy-prod:
@@ -375,9 +399,12 @@ jobs:
         uses: azure/arm-deploy@v2
         with:
           scope: subscription
-          region: australiaeast
+          region: ${{ env.DEPLOY_REGION }}
           template: infra/main.bicep
-          parameters: infra/main.prod.bicepparam
+          parameters: >-
+            infra/main.prod.bicepparam
+            containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
+            pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           deploymentName: "deploy-prod-${{ github.run_number }}"
 
       - name: Download Function App artifact
@@ -405,3 +432,14 @@ jobs:
             --name ca-pyapi-ssdlcdemo-prod \
             --resource-group rg-ssdlcdemo-prod \
             --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+      - name: Smoke test (prod)
+        run: |
+          echo "Waiting for production deployment to stabilize..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://func-ssdlcdemo-prod.azurewebsites.net/api/health 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then echo "Production health check passed!"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::Production health check did not return 200 within timeout"
