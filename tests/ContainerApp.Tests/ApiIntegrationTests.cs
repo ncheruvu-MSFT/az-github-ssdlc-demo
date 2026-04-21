@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -99,5 +100,44 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 
         // Assert
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+    }
+
+    [Fact]
+    public async Task Time_ReturnsOk()
+    {
+        // Act
+        var response = await _client.GetAsync("/api/time");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Time_ReturnsUtcFieldWithIso8601DateTime()
+    {
+        // Act
+        var response = await _client.GetAsync("/api/time");
+        var content = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        content.TryGetProperty("utc", out var utcElement).Should().BeTrue();
+        utcElement.ValueKind.Should().Be(JsonValueKind.String);
+        DateTimeOffset.TryParse(utcElement.GetString(), out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Time_ReturnsUnixTimestampNumber()
+    {
+        // Act
+        var response = await _client.GetAsync("/api/time");
+        var content = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        content.TryGetProperty("timestamp", out var timestampElement).Should().BeTrue();
+        timestampElement.ValueKind.Should().Be(JsonValueKind.Number);
+        timestampElement.TryGetInt64(out var timestamp).Should().BeTrue();
+        timestamp.Should().BeGreaterThan(0);
     }
 }

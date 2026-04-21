@@ -46,6 +46,19 @@ app.MapGet("/api/info", () => Results.Ok(new
 .WithName("Info")
 .WithOpenApi();
 
+app.MapGet("/api/time", () =>
+{
+    var now = DateTimeOffset.UtcNow;
+    return Results.Ok(new
+    {
+        utc = now,
+        timestamp = now.ToUnixTimeSeconds(),
+        timezone = "UTC"
+    });
+})
+.WithName("Time")
+.WithOpenApi();
+
 app.Run();
 
 namespace HelloWorld.ContainerApp
