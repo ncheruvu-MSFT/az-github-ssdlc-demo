@@ -116,13 +116,22 @@ jobs:
         run: |
           # Create trust policy for downstream verification
           mkdir -p ./notation-config
-          cat > ./notation-config/trustpolicy.json << 'EOF'
+          cat > ./notation-config/trustpolicy.json << EOF
           {
             "version": "1.0",
             "trustPolicies": [
               {
-                "name": "ssdlc-demo-images",
-                "registryScopes": [ "${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/*" ],
+                "name": "ssdlc-containerapp",
+                "registryScopes": [ "${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp" ],
+                "signatureVerification": {
+                  "level": "strict"
+                },
+                "trustStores": [ "ca:ssdlc-demo-signing-key" ],
+                "trustedIdentities": [ "*" ]
+              },
+              {
+                "name": "ssdlc-pythonapi",
+                "registryScopes": [ "${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi" ],
                 "signatureVerification": {
                   "level": "strict"
                 },
