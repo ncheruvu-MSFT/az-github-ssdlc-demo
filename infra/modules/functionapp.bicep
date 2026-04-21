@@ -50,9 +50,8 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
-    allowSharedKeyAccess: false
+    allowSharedKeyAccess: true
     publicNetworkAccess: 'Enabled'
-    defaultToOAuthAuthentication: true
     networkAcls: {
       bypass: 'AzureServices'
       defaultAction: 'Allow'
@@ -121,20 +120,16 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       }
       appSettings: [
         {
-          name: 'AzureWebJobsStorage__accountName'
-          value: storageAccount.name
+          name: 'AzureWebJobsStorage'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
         }
         {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__accountName'
-          value: storageAccount.name
+          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
           value: toLower(functionAppName)
-        }
-        {
-          name: 'WEBSITE_SKIP_CONTENTSHARE_VALIDATION'
-          value: '1'
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -162,43 +157,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
       ]
     }
-  }
-}
-
-// ============================================================================
-// Role Assignments for identity-based storage access
-// ============================================================================
-var storageBlobDataOwnerRoleId = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
-var storageAccountContributorRoleId = '17d1049b-9a84-46fb-8f53-869881c3d3ab'
-var storageFileDataPrivilegedContributorRoleId = '69566ab7-960f-475b-8e7c-b3118f30c6bd'
-
-resource storageBlobDataOwnerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageAccount
-  name: guid(storageAccount.id, functionApp.id, storageBlobDataOwnerRoleId)
-  properties: {
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataOwnerRoleId)
-  }
-}
-
-resource storageAccountContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageAccount
-  name: guid(storageAccount.id, functionApp.id, storageAccountContributorRoleId)
-  properties: {
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageAccountContributorRoleId)
-  }
-}
-
-resource storageFileDataContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageAccount
-  name: guid(storageAccount.id, functionApp.id, storageFileDataPrivilegedContributorRoleId)
-  properties: {
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageFileDataPrivilegedContributorRoleId)
   }
 }
 
