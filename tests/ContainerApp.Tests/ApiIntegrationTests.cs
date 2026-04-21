@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -99,6 +101,55 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 
         // Assert
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+    }
+
+    [Fact]
+    public async Task GetTime_WhenCalled_ReturnsOk()
+    {
+        // Act
+        var response = await _client.GetAsync("/api/time");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task GetTime_WhenCalled_ReturnsValidIso8601UtcDateTime()
+    {
+        // Act
+        var response = await _client.GetAsync("/api/time");
+        var content = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        content.TryGetProperty("utc", out var utcElement).Should().BeTrue();
+        utcElement.ValueKind.Should().Be(JsonValueKind.String);
+        var utcValue = utcElement.GetString();
+        utcValue.Should().NotBeNullOrWhiteSpace();
+        utcValue.Should().Contain("T").And.EndWith("Z");
+        DateTimeOffset.TryParseExact(
+            utcValue,
+            "O",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var parsedUtc).Should().BeTrue();
+        parsedUtc.Offset.Should().Be(TimeSpan.Zero);
+        parsedUtc.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task GetTime_WhenCalled_ReturnsValidUnixTimestamp()
+    {
+        // Act
+        var response = await _client.GetAsync("/api/time");
+        var content = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        content.TryGetProperty("timestamp", out var timestampElement).Should().BeTrue();
+        timestampElement.ValueKind.Should().Be(JsonValueKind.Number);
+        timestampElement.TryGetInt64(out var timestamp).Should().BeTrue();
+        timestamp.Should().BeGreaterThan(0);
     }
 
     [Fact]
