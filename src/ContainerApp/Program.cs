@@ -30,6 +30,12 @@ app.MapGet("/", () => Results.Ok(new
 
 app.MapGet("/api/hello", (string? name) =>
 {
+    // Input validation: reject names exceeding max length (OWASP A03:2021)
+    if (name is not null && name.Length > 100)
+    {
+        return Results.BadRequest(new { error = "Name parameter must not exceed 100 characters." });
+    }
+
     var greeting = string.IsNullOrWhiteSpace(name) ? "World" : name;
     return Results.Ok(new HelloResponse($"Hello, {greeting}!", DateTimeOffset.UtcNow, "1.0.0"));
 })

@@ -21,6 +21,9 @@ param vnetId string
 @description('Subnet ID for private endpoint')
 param privateEndpointSubnetId string
 
+@description('Log Analytics Workspace ID for diagnostics')
+param logAnalyticsWorkspaceId string
+
 // ============================================================================
 // Key Vault with Enterprise Security
 // ============================================================================
@@ -107,6 +110,7 @@ resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
   scope: keyVault
   name: '${keyVaultName}-diag'
   properties: {
+    workspaceId: logAnalyticsWorkspaceId
     logs: [
       {
         categoryGroup: 'allLogs'

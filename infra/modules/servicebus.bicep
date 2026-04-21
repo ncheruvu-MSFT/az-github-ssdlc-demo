@@ -21,6 +21,9 @@ param vnetId string
 @description('Subnet ID for private endpoint')
 param privateEndpointSubnetId string
 
+@description('Log Analytics Workspace ID for diagnostics')
+param logAnalyticsWorkspaceId string
+
 // ============================================================================
 // Service Bus Namespace - Enterprise Service Hub
 // ============================================================================
@@ -163,6 +166,7 @@ resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
   scope: serviceBus
   name: '${serviceBusName}-diag'
   properties: {
+    workspaceId: logAnalyticsWorkspaceId
     logs: [
       {
         categoryGroup: 'allLogs'
