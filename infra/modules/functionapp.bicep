@@ -61,20 +61,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 }
 
 // ============================================================================
-// File Share (pre-create to avoid 403 race condition on Consumption plan)
-// ============================================================================
-resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2023-05-01' = {
-  parent: storageAccount
-  name: 'default'
-}
-
-resource contentShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = {
-  parent: fileService
-  name: toLower(functionAppName)
-}
-
-// ============================================================================
-// App Service Plan (Elastic Premium for VNet integration)
+// App Service Plan (Elastic Premium for identity-based storage)
 // ============================================================================
 var planName = 'asp-${projectName}-func-${environment}'
 
@@ -83,11 +70,11 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   location: location
   tags: tags
   sku: {
-    name: environment == 'prod' ? 'EP1' : 'Y1'
-    tier: environment == 'prod' ? 'ElasticPremium' : 'Dynamic'
+    name: 'EP1'
+    tier: 'ElasticPremium'
   }
   properties: {
-    reserved: false  // Windows for .NET
+    reserved: true  // Linux
   }
 }
 
@@ -100,8 +87,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppName
   location: location
   tags: union(tags, { 'azd-service-name': 'functionapp' })
-  kind: 'functionapp'
-  dependsOn: [contentShare]
+  kind: 'functionapp,linux'
   identity: {
     type: 'SystemAssigned'
   }
@@ -110,7 +96,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     virtualNetworkSubnetId: environment == 'prod' ? subnetId : null
     siteConfig: {
-      netFrameworkVersion: 'v8.0'
+      linuxFxVersion: 'DOTNET-ISOLATED|8.0'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       http20Enabled: true
@@ -121,20 +107,16 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       }
       appSettings: [
         {
-          name: 'AzureWebJobsStorage__accountName'
-          value: storageAccount.name
+          name: 'AzureWebJobsStorage__blobServiceUri'
+          value: 'https://${storageAccount.name}.blob.${az.environment().suffixes.storage}'
         }
         {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING__accountName'
-          value: storageAccount.name
+          name: 'AzureWebJobsStorage__queueServiceUri'
+          value: 'https://${storageAccount.name}.queue.${az.environment().suffixes.storage}'
         }
         {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: toLower(functionAppName)
-        }
-        {
-          name: 'WEBSITE_SKIP_CONTENTSHARE_VALIDATION'
-          value: '1'
+          name: 'AzureWebJobsStorage__tableServiceUri'
+          value: 'https://${storageAccount.name}.table.${az.environment().suffixes.storage}'
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
