@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -103,7 +104,7 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task Time_ReturnsOk()
+    public async Task GetTime_WhenCalled_ReturnsOk()
     {
         // Act
         var response = await _client.GetAsync("/api/time");
@@ -113,7 +114,7 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task Time_ReturnsUtcFieldWithIso8601DateTime()
+    public async Task GetTime_WhenCalled_ReturnsValidIso8601UtcDateTime()
     {
         // Act
         var response = await _client.GetAsync("/api/time");
@@ -123,11 +124,21 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         content.TryGetProperty("utc", out var utcElement).Should().BeTrue();
         utcElement.ValueKind.Should().Be(JsonValueKind.String);
-        DateTimeOffset.TryParse(utcElement.GetString(), out _).Should().BeTrue();
+        var utcValue = utcElement.GetString();
+        utcValue.Should().NotBeNullOrWhiteSpace();
+        utcValue.Should().Contain("T").And.EndWith("Z");
+        DateTimeOffset.TryParseExact(
+            utcValue,
+            "O",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var parsedUtc).Should().BeTrue();
+        parsedUtc.Offset.Should().Be(TimeSpan.Zero);
+        parsedUtc.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(10));
     }
 
     [Fact]
-    public async Task Time_ReturnsUnixTimestampNumber()
+    public async Task GetTime_WhenCalled_ReturnsValidUnixTimestamp()
     {
         // Act
         var response = await _client.GetAsync("/api/time");

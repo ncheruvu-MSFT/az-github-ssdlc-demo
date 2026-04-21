@@ -51,7 +51,7 @@ app.MapGet("/api/time", () =>
     var now = DateTimeOffset.UtcNow;
     return Results.Ok(new
     {
-        utc = now,
+        utc = now.UtcDateTime.ToString("O"),
         timestamp = now.ToUnixTimeSeconds(),
         timezone = "UTC"
     });
