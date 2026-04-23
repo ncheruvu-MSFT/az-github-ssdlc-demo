@@ -57,7 +57,18 @@ jobs:
           python -m py_compile src/AIAgent/agent_eval.py
           python -m py_compile src/AIAgent/red_team.py
           python -m py_compile src/AIAgent/observability.py
+          python -m py_compile src/AIAgent/checkimports.py
+          python -m py_compile src/AIAgent/agenteval_classic.py
+          python -m py_compile src/AIAgent/content_safety.py
+          python -m py_compile src/AIAgent/redteam_classic.py
+          python -m py_compile src/AIAgent/e2etest.py
+          python -m py_compile src/AIAgent/policy_validation.py
+          python -m py_compile src/AIAgent/tool_schema_validation.py
+          python -m py_compile src/AIAgent/gate_logic.py
           echo "All Python files compiled successfully"
+
+      - name: Check module imports
+        run: python src/AIAgent/checkimports.py
 
       - name: Run unit tests
         run: |
@@ -85,6 +96,9 @@ jobs:
             src/AIAgent/agent_eval.py
             src/AIAgent/red_team.py
             src/AIAgent/observability.py
+            src/AIAgent/redteam_classic.py
+            src/AIAgent/e2etest.py
+            src/AIAgent/gate_logic.py
             src/AIAgent/requirements.txt
           retention-days: 30
 
@@ -246,6 +260,36 @@ jobs:
           echo "Red team testing completed"
         continue-on-error: true
         timeout-minutes: 45
+
+      - name: Run Extended Red Team (Classic Attacks)
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT_TEST }}
+          FOUNDRY_MODEL_NAME: ${{ secrets.FOUNDRY_MODEL_NAME }}
+          AGENT_NAME: ssdlc-demo-agent
+        run: |
+          echo "Running extended adversarial tests..."
+          echo "Categories: jailbreak, role_confusion, multi_turn, indirect_injection"
+          cd src/AIAgent
+          python redteam_classic.py
+        continue-on-error: true
+        timeout-minutes: 30
+
+      - name: E2E Agent Smoke Test
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT_TEST }}
+          FOUNDRY_MODEL_NAME: ${{ secrets.FOUNDRY_MODEL_NAME }}
+          AGENT_NAME: ssdlc-demo-agent
+        run: |
+          cd src/AIAgent
+          python e2etest.py
+        continue-on-error: true
+        timeout-minutes: 15
+
+      - name: Safety Gate Check
+        run: |
+          cd src/AIAgent
+          python gate_logic.py safety
+        continue-on-error: true
 
       - name: Upload Red Team Results
         uses: actions/upload-artifact@v4

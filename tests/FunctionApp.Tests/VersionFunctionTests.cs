@@ -26,27 +26,26 @@ public class VersionFunctionTests
         var context = new DefaultHttpContext();
 
         // Act
-        var result = _sut.Run(context.Request) as OkObjectResult;
+        var result = Assert.IsType<OkObjectResult>(_sut.Run(context.Request));
 
         // Assert
-        result.Should().NotBeNull();
-        result!.StatusCode.Should().Be(200);
+        result.StatusCode.Should().Be(200);
 
         var value = result.Value;
-        value.Should().NotBeNull();
+        Assert.NotNull(value);
 
         var versionProp = value!.GetType().GetProperty("Version");
-        versionProp.Should().NotBeNull();
+        Assert.NotNull(versionProp);
         versionProp!.GetValue(value).Should().NotBeNull();
 
         var commitShaProp = value.GetType().GetProperty("CommitSha");
-        commitShaProp.Should().NotBeNull();
+        Assert.NotNull(commitShaProp);
 
         var buildDateProp = value.GetType().GetProperty("BuildDate");
-        buildDateProp.Should().NotBeNull();
+        Assert.NotNull(buildDateProp);
 
         var timestampProp = value.GetType().GetProperty("Timestamp");
-        timestampProp.Should().NotBeNull();
+        Assert.NotNull(timestampProp);
     }
 
     [Fact]
@@ -59,12 +58,13 @@ public class VersionFunctionTests
         try
         {
             // Act
-            var result = _sut.Run(context.Request) as OkObjectResult;
+            var result = Assert.IsType<OkObjectResult>(_sut.Run(context.Request));
 
             // Assert
-            result.Should().NotBeNull();
-            var value = result!.Value;
+            var value = result.Value;
+            Assert.NotNull(value);
             var commitShaProp = value!.GetType().GetProperty("CommitSha");
+            Assert.NotNull(commitShaProp);
             commitShaProp!.GetValue(value).Should().Be("abc123def");
         }
         finally
@@ -81,12 +81,13 @@ public class VersionFunctionTests
         Environment.SetEnvironmentVariable("COMMIT_SHA", null);
 
         // Act
-        var result = _sut.Run(context.Request) as OkObjectResult;
+        var result = Assert.IsType<OkObjectResult>(_sut.Run(context.Request));
 
         // Assert
-        result.Should().NotBeNull();
-        var value = result!.Value;
+        var value = result.Value;
+        Assert.NotNull(value);
         var commitShaProp = value!.GetType().GetProperty("CommitSha");
+        Assert.NotNull(commitShaProp);
         commitShaProp!.GetValue(value).Should().Be("local");
     }
 }

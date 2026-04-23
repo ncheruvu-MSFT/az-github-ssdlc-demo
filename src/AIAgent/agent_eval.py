@@ -6,7 +6,6 @@
 # =============================================================================
 """Evaluate AI agent quality using Azure AI Evaluation metrics."""
 
-import json
 import os
 import sys
 import time

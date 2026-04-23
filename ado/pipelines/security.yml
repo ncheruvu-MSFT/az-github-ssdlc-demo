@@ -1,0 +1,199 @@
+# ==============================================================================
+# Security Pipeline — Microsoft Security DevOps (MSDO) + GHAzDO
+# ADO equivalent of: .github/workflows/codeql.yml + dependency-review.yml
+#
+# GHAzDO (GitHub Advanced Security for Azure DevOps) provides:
+#   - CodeQL SAST (C# + Python) — runs automatically if enabled
+#   - Dependency scanning — automatic alerts on vulnerable packages
+#   - Secret scanning — push protection for committed secrets
+# This pipeline adds MSDO tools + manual scanning for defense in depth.
+# ==============================================================================
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+schedules:
+  - cron: '0 6 * * 1'                  # Weekly Monday 6 AM UTC (same as GitHub)
+    displayName: 'Weekly security scan'
+    branches:
+      include:
+        - main
+    always: true
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: ssdlc-shared
+  - name: DOTNET_VERSION
+    value: '8.0.x'
+
+stages:
+  # ── SAST — Static Application Security Testing ────────────────
+  - stage: SAST
+    displayName: 'SAST Scanning'
+    jobs:
+      - job: MSDO_SAST
+        displayName: 'Microsoft Security DevOps — SAST'
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: 'sdk'
+              version: $(DOTNET_VERSION)
+
+          # MSDO runs: Bandit (Python), Checkov (IaC), Trivy, ESLint, etc.
+          - task: MicrosoftSecurityDevOps@1
+            displayName: 'MSDO — Code Analysis'
+            inputs:
+              categories: 'code'
+              tools: 'bandit'
+
+          # GHAzDO CodeQL — if enabled at org/project level, this is automatic.
+          # For manual CodeQL, use the AdvancedSecurity tasks:
+          - task: AdvancedSecurity-Codeql-Init@1
+            displayName: 'CodeQL Initialize'
+            inputs:
+              languages: 'csharp,python'
+              querysuite: 'security-and-quality'
+            condition: "ne(variables['System.PullRequest.IsFork'], 'True')"
+            continueOnError: true
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build .NET (for CodeQL)'
+            inputs:
+              command: 'build'
+              projects: 'SsdlcDemo.sln'
+              arguments: '--configuration Release'
+            continueOnError: true
+
+          - task: AdvancedSecurity-Codeql-Autobuild@1
+            displayName: 'CodeQL Autobuild (Python)'
+            continueOnError: true
+
+          - task: AdvancedSecurity-Codeql-Analyze@1
+            displayName: 'CodeQL Analyze'
+            continueOnError: true
+
+          - task: AdvancedSecurity-Publish@1
+            displayName: 'Publish to Advanced Security tab'
+            continueOnError: true
+
+  # ── SCA — Software Composition Analysis ────────────────────────
+  - stage: SCA
+    displayName: 'SCA — Dependency Scanning'
+    dependsOn: []
+    jobs:
+      - job: DependencyScan
+        displayName: 'Dependency Vulnerability Scan'
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: 'sdk'
+              version: $(DOTNET_VERSION)
+
+          # .NET vulnerable package audit
+          - script: |
+              echo "Checking .NET vulnerable packages..."
+              dotnet list src/FunctionApp/HelloWorld.Functions.csproj package --vulnerable --include-transitive
+              dotnet list src/ContainerApp/HelloWorld.ContainerApp.csproj package --vulnerable --include-transitive
+              echo ".NET SCA check complete"
+            displayName: '.NET vulnerable package audit'
+            continueOnError: true
+
+          # Python dependency check
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.12'
+
+          - script: |
+              pip install safety pip-audit
+              echo "Running Safety check..."
+              safety check -r src/PythonApi/requirements.txt || true
+              echo "Running pip-audit..."
+              pip-audit -r src/PythonApi/requirements.txt || true
+              echo "Python SCA check complete"
+            displayName: 'Python dependency scan'
+            continueOnError: true
+
+          # GHAzDO Dependency Scanning runs automatically if enabled.
+          # Alerts appear in Repos → Advanced Security → Dependencies.
+
+          - task: AdvancedSecurity-Dependency-Scanning@1
+            displayName: 'GHAzDO Dependency Scanning'
+            continueOnError: true
+
+  # ── Container Scanning ─────────────────────────────────────────
+  - stage: ContainerSecurity
+    displayName: 'Container Scanning'
+    dependsOn: []
+    jobs:
+      - job: ContainerScan
+        displayName: 'Trivy + MSDO Container Scan'
+        steps:
+          - script: |
+              docker build -t ssdlc-containerapp:scan -f src/ContainerApp/Dockerfile .
+              docker build -t ssdlc-pythonapi:scan -f src/PythonApi/Dockerfile .
+            displayName: 'Build container images'
+
+          - task: MicrosoftSecurityDevOps@1
+            displayName: 'MSDO — Container Analysis'
+            inputs:
+              categories: 'artifacts'
+              tools: 'trivy'
+
+  # ── IaC Scanning ───────────────────────────────────────────────
+  - stage: IaCSecurity
+    displayName: 'IaC Security Scanning'
+    dependsOn: []
+    jobs:
+      - job: IaCScan
+        displayName: 'Checkov + Bicep Lint'
+        steps:
+          - script: |
+              pip install checkov
+              checkov -d infra/ --framework bicep --soft-fail
+            displayName: 'Checkov IaC scan'
+            continueOnError: true
+
+          - task: MicrosoftSecurityDevOps@1
+            displayName: 'MSDO — IaC Analysis'
+            inputs:
+              categories: 'IaC'
+              tools: 'checkov'
+
+  # ── Secret Scanning ────────────────────────────────────────────
+  - stage: SecretScanning
+    displayName: 'Secret Scanning'
+    dependsOn: []
+    jobs:
+      - job: SecretScan
+        displayName: 'Gitleaks Secret Scan'
+        steps:
+          - script: |
+              echo "Installing gitleaks..."
+              curl -Lo gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+              tar xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
+              chmod +x /usr/local/bin/gitleaks
+              echo "Scanning for secrets..."
+              gitleaks detect --source . --report-format sarif --report-path $(Build.ArtifactStagingDirectory)/gitleaks.sarif || true
+              gitleaks detect --source . --verbose
+            displayName: 'Gitleaks secret scan'
+            continueOnError: true
+
+          # GHAzDO Secret Scanning — if enabled, this runs automatically
+          # with push protection (blocks commits containing secrets).
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload secret scan results'
+            condition: always()
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'secret-scan-results'

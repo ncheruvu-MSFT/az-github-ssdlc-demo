@@ -1,0 +1,7 @@
+name: "SSDLC CodeQL Config"
+
+paths-ignore:
+  - "**/obj/**"
+  - "**/bin/**"
+  - "**/node_modules/**"
+  - "**/*.g.cs"

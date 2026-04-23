@@ -1,0 +1,91 @@
+# ==============================================================================
+# Reusable Template — Azure Bicep Deployment
+# Usage:
+#   - template: templates/azure-deploy.yml
+#     parameters:
+#       environment: 'dev'
+#       serviceConnection: 'azure-dev'
+# ==============================================================================
+
+parameters:
+  - name: serviceConnection
+    type: string
+  - name: environment
+    type: string
+  - name: deployRegion
+    type: string
+    default: 'australiaeast'
+  - name: bicepFile
+    type: string
+    default: 'infra/main.bicep'
+  - name: bicepParamFile
+    type: string
+    default: ''
+  - name: containerAppImage
+    type: string
+    default: ''
+  - name: pythonApiImage
+    type: string
+    default: ''
+  - name: functionAppArtifact
+    type: string
+    default: ''
+
+steps:
+  - task: AzureCLI@2
+    displayName: 'Deploy Bicep — ${{ parameters.environment }}'
+    inputs:
+      azureSubscription: ${{ parameters.serviceConnection }}
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        echo "Deploying infrastructure to ${{ parameters.environment }}..."
+
+        PARAM_FILE="${{ parameters.bicepParamFile }}"
+        if [ -z "$PARAM_FILE" ]; then
+          PARAM_FILE="infra/main.${{ parameters.environment }}.bicepparam"
+        fi
+
+        az deployment sub create \
+          --name "ssdlc-${{ parameters.environment }}-$(Build.BuildId)" \
+          --location "${{ parameters.deployRegion }}" \
+          --template-file "${{ parameters.bicepFile }}" \
+          --parameters "$PARAM_FILE" \
+          --parameters containerAppImage='${{ parameters.containerAppImage }}' \
+                       pythonApiImage='${{ parameters.pythonApiImage }}'
+
+        echo "Infrastructure deployed ✓"
+
+  - ${{ if ne(parameters.functionAppArtifact, '') }}:
+    - task: AzureFunctionApp@2
+      displayName: 'Deploy Function App — ${{ parameters.environment }}'
+      inputs:
+        azureSubscription: ${{ parameters.serviceConnection }}
+        appType: 'functionAppLinux'
+        appName: 'func-ssdlcdemo-${{ parameters.environment }}'
+        package: '${{ parameters.functionAppArtifact }}'
+        runtimeStack: 'DOTNET-ISOLATED|8.0'
+
+  - ${{ if ne(parameters.containerAppImage, '') }}:
+    - task: AzureCLI@2
+      displayName: 'Update Container Apps — ${{ parameters.environment }}'
+      inputs:
+        azureSubscription: ${{ parameters.serviceConnection }}
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          RG="rg-ssdlcdemo-${{ parameters.environment }}"
+
+          echo "Updating ContainerApp image..."
+          az containerapp update \
+            --name ca-ssdlcdemo-${{ parameters.environment }} \
+            --resource-group "$RG" \
+            --image "${{ parameters.containerAppImage }}" \
+            2>/dev/null || echo "ContainerApp update skipped (may not exist yet)"
+
+          echo "Updating PythonApi image..."
+          az containerapp update \
+            --name ca-pythonapi-${{ parameters.environment }} \
+            --resource-group "$RG" \
+            --image "${{ parameters.pythonApiImage }}" \
+            2>/dev/null || echo "PythonApi update skipped (may not exist yet)"

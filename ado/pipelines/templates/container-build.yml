@@ -1,0 +1,87 @@
+# ==============================================================================
+# Reusable Template — Container Build + Sign + Push
+# Usage:
+#   - template: templates/container-build.yml
+#     parameters:
+#       dockerfilePath: 'src/ContainerApp/Dockerfile'
+#       imageName: 'ssdlc-containerapp'
+# ==============================================================================
+
+parameters:
+  - name: serviceConnection
+    type: string
+  - name: acrName
+    type: string
+  - name: dockerfilePath
+    type: string
+  - name: buildContext
+    type: string
+    default: '.'
+  - name: imageName
+    type: string
+  - name: signImage
+    type: boolean
+    default: true
+
+steps:
+  - task: AzureCLI@2
+    displayName: 'Login to ACR'
+    inputs:
+      azureSubscription: ${{ parameters.serviceConnection }}
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        az acr login --name ${{ parameters.acrName }}
+
+  - task: Docker@2
+    displayName: 'Build ${{ parameters.imageName }}'
+    inputs:
+      command: 'build'
+      Dockerfile: ${{ parameters.dockerfilePath }}
+      buildContext: ${{ parameters.buildContext }}
+      tags: |
+        ${{ parameters.acrName }}.azurecr.io/${{ parameters.imageName }}:$(Build.SourceVersion)
+        ${{ parameters.acrName }}.azurecr.io/${{ parameters.imageName }}:latest
+
+  - task: Docker@2
+    displayName: 'Push ${{ parameters.imageName }}'
+    inputs:
+      command: 'push'
+      containerRegistry: ${{ parameters.serviceConnection }}
+      repository: ${{ parameters.imageName }}
+      tags: |
+        $(Build.SourceVersion)
+        latest
+
+  - ${{ if eq(parameters.signImage, true) }}:
+    - script: |
+        echo "Installing Notation CLI..."
+        curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v1.2.0/notation_1.2.0_linux_amd64.tar.gz
+        tar xzf notation.tar.gz -C /usr/local/bin/ notation
+        chmod +x /usr/local/bin/notation
+
+        echo "Generating signing key (self-signed for demo)..."
+        notation cert generate-test --default "ssdlc-demo-signing"
+
+        IMAGE="${{ parameters.acrName }}.azurecr.io/${{ parameters.imageName }}:$(Build.SourceVersion)"
+        echo "Signing image: $IMAGE"
+        notation sign "$IMAGE"
+
+        echo "Verifying signature..."
+        cat > /tmp/trustpolicy.json << 'POLICY'
+        {
+          "version": "1.0",
+          "trustPolicies": [{
+            "name": "ssdlc-demo-policy",
+            "registryScopes": ["${{ parameters.acrName }}.azurecr.io/${{ parameters.imageName }}"],
+            "signatureVerification": { "level": "strict" },
+            "trustStores": ["ca:ssdlc-demo-signing"],
+            "trustedIdentities": ["*"]
+          }]
+        }
+        POLICY
+        notation policy import /tmp/trustpolicy.json
+        notation verify "$IMAGE"
+        echo "Image signed and verified ✓"
+      displayName: 'Sign image with Notation v2'
+      continueOnError: true

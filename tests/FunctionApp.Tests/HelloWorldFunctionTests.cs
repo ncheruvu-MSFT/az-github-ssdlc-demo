@@ -27,16 +27,15 @@ public class HelloWorldFunctionTests
         var request = context.Request;
 
         // Act
-        var result = _sut.Run(request) as OkObjectResult;
+        var result = Assert.IsType<OkObjectResult>(_sut.Run(request));
 
         // Assert
-        result.Should().NotBeNull();
-        result!.StatusCode.Should().Be(200);
+        result.StatusCode.Should().Be(200);
 
         var value = result.Value;
-        value.Should().NotBeNull();
+        Assert.NotNull(value);
         var messageProperty = value!.GetType().GetProperty("Message");
-        messageProperty.Should().NotBeNull();
+        Assert.NotNull(messageProperty);
         messageProperty!.GetValue(value).Should().Be("Hello, World!");
     }
 
@@ -48,14 +47,15 @@ public class HelloWorldFunctionTests
         context.Request.QueryString = new QueryString("?name=Azure");
 
         // Act
-        var result = _sut.Run(context.Request) as OkObjectResult;
+        var result = Assert.IsType<OkObjectResult>(_sut.Run(context.Request));
 
         // Assert
-        result.Should().NotBeNull();
-        result!.StatusCode.Should().Be(200);
+        result.StatusCode.Should().Be(200);
 
         var value = result.Value;
+        Assert.NotNull(value);
         var messageProperty = value!.GetType().GetProperty("Message");
+        Assert.NotNull(messageProperty);
         messageProperty!.GetValue(value).Should().Be("Hello, Azure!");
     }
 
@@ -67,12 +67,13 @@ public class HelloWorldFunctionTests
         context.Request.QueryString = new QueryString("?name=");
 
         // Act
-        var result = _sut.Run(context.Request) as OkObjectResult;
+        var result = Assert.IsType<OkObjectResult>(_sut.Run(context.Request));
 
         // Assert
-        result.Should().NotBeNull();
-        var value = result!.Value;
+        var value = result.Value;
+        Assert.NotNull(value);
         var messageProperty = value!.GetType().GetProperty("Message");
+        Assert.NotNull(messageProperty);
         messageProperty!.GetValue(value).Should().Be("Hello, World!");
     }
 
@@ -83,14 +84,15 @@ public class HelloWorldFunctionTests
         var context = new DefaultHttpContext();
 
         // Act
-        var result = _sut.HealthCheck(context.Request) as OkObjectResult;
+        var result = Assert.IsType<OkObjectResult>(_sut.HealthCheck(context.Request));
 
         // Assert
-        result.Should().NotBeNull();
-        result!.StatusCode.Should().Be(200);
+        result.StatusCode.Should().Be(200);
 
         var value = result.Value;
+        Assert.NotNull(value);
         var statusProperty = value!.GetType().GetProperty("Status");
+        Assert.NotNull(statusProperty);
         statusProperty!.GetValue(value).Should().Be("Healthy");
     }
 
@@ -101,12 +103,13 @@ public class HelloWorldFunctionTests
         var context = new DefaultHttpContext();
 
         // Act
-        var result = _sut.Run(context.Request) as OkObjectResult;
+        var result = Assert.IsType<OkObjectResult>(_sut.Run(context.Request));
 
         // Assert
-        var value = result!.Value;
+        var value = result.Value;
+        Assert.NotNull(value);
         var timestampProperty = value!.GetType().GetProperty("Timestamp");
-        timestampProperty.Should().NotBeNull();
+        Assert.NotNull(timestampProperty);
         var timestamp = (DateTimeOffset)timestampProperty!.GetValue(value)!;
         timestamp.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
     }
@@ -118,11 +121,13 @@ public class HelloWorldFunctionTests
         var context = new DefaultHttpContext();
 
         // Act
-        var result = _sut.Run(context.Request) as OkObjectResult;
+        var result = Assert.IsType<OkObjectResult>(_sut.Run(context.Request));
 
         // Assert
-        var value = result!.Value;
+        var value = result.Value;
+        Assert.NotNull(value);
         var versionProperty = value!.GetType().GetProperty("Version");
+        Assert.NotNull(versionProperty);
         versionProperty!.GetValue(value).Should().Be("1.0.0");
     }
 }

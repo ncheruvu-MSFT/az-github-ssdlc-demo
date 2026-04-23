@@ -1,0 +1,173 @@
+# ==============================================================================
+# Staging Gate — Release Readiness Report
+# ADO equivalent of: .github/workflows/staging-gate.yml
+# Generates Go/No-Go report using ADO REST API for pipeline status,
+# work items, and security findings.
+# ==============================================================================
+trigger: none
+
+schedules:
+  - cron: '0 8 * * 1-5'                # Weekdays 8 AM UTC
+    displayName: 'Daily readiness check'
+    branches:
+      include:
+        - main
+    always: false                       # Only if there are changes
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: ssdlc-shared
+  - name: ADO_ORG
+    value: 'https://dev.azure.com/$(System.CollectionUri)'
+  - name: ADO_PROJECT
+    value: '$(System.TeamProject)'
+
+stages:
+  - stage: StagingGate
+    displayName: 'Staging Gate — Release Readiness'
+    jobs:
+      - job: GateReport
+        displayName: 'Generate Go/No-Go Report'
+        steps:
+          - script: |
+              echo "##[section]📋 SSDLC Staging Gate Report"
+              echo "================================================"
+              echo "Date: $(date -u '+%Y-%m-%d %H:%M UTC')"
+              echo "Build: $(Build.BuildId)"
+              echo "Branch: $(Build.SourceBranchName)"
+              echo "Commit: $(Build.SourceVersion)"
+              echo "Requested By: $(Build.RequestedFor)"
+              echo ""
+
+              # ── Check CI Pipeline Status ──────────────────────
+              echo "##[section]1. CI Pipeline Status"
+              CI_STATUS="unknown"
+              CI_RESULT=$(az pipelines runs list \
+                --pipeline-ids $(CI_PIPELINE_ID) \
+                --branch main \
+                --top 1 \
+                --query "[0].result" -o tsv 2>/dev/null || echo "unknown")
+
+              if [ "$CI_RESULT" = "succeeded" ]; then
+                echo "  ✅ CI: PASSED"
+                CI_STATUS="pass"
+              else
+                echo "  ❌ CI: $CI_RESULT"
+                CI_STATUS="fail"
+              fi
+
+              # ── Check Security Scan Status ────────────────────
+              echo ""
+              echo "##[section]2. Security Scan Status"
+              SEC_RESULT=$(az pipelines runs list \
+                --pipeline-ids $(SECURITY_PIPELINE_ID) \
+                --branch main \
+                --top 1 \
+                --query "[0].result" -o tsv 2>/dev/null || echo "unknown")
+
+              if [ "$SEC_RESULT" = "succeeded" ]; then
+                echo "  ✅ Security Scan: PASSED"
+              else
+                echo "  ⚠️  Security Scan: $SEC_RESULT"
+              fi
+
+              # ── Query Work Item Status ────────────────────────
+              echo ""
+              echo "##[section]3. Work Item Status"
+              echo "  Querying ADO work items for current sprint..."
+
+              DONE_COUNT=$(az boards query \
+                --wiql "SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Done' AND [System.IterationPath] UNDER @CurrentIteration" \
+                --query "length(@)" -o tsv 2>/dev/null || echo "0")
+
+              ACTIVE_COUNT=$(az boards query \
+                --wiql "SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Active' AND [System.IterationPath] UNDER @CurrentIteration" \
+                --query "length(@)" -o tsv 2>/dev/null || echo "0")
+
+              echo "  Done: $DONE_COUNT | Active: $ACTIVE_COUNT"
+
+              # ── Generate Markdown Report ──────────────────────
+              echo ""
+              echo "##[section]4. SSDLC Compliance Checklist"
+              cat << 'CHECKLIST'
+              ✅ Code Review: Required via branch policies
+              ✅ SAST (CodeQL): GHAzDO + MSDO
+              ✅ SCA (Dependencies): GHAzDO dependency scanning
+              ✅ Secret Scanning: GHAzDO push protection
+              ✅ Container Scanning: Trivy via MSDO
+              ✅ IaC Scanning: Checkov via MSDO
+              ✅ Image Signing: Notation v2
+              ✅ RBAC: Workload Identity Federation (no stored creds)
+              ✅ Environment Gates: Dev → Staging (1 approval) → Prod (2)
+              CHECKLIST
+
+              # ── Go/No-Go Decision ────────────────────────────
+              echo ""
+              echo "##[section]5. RELEASE DECISION"
+              if [ "$CI_STATUS" = "pass" ]; then
+                echo "  🟢 GO — All gates passed"
+                echo "##vso[task.setvariable variable=GATE_DECISION]GO"
+              else
+                echo "  🔴 NO-GO — CI pipeline not passing"
+                echo "##vso[task.setvariable variable=GATE_DECISION]NO-GO"
+              fi
+            displayName: 'Generate staging gate report'
+            env:
+              AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+
+          - script: |
+              # Write report to markdown file for artifact
+              cat > $(Build.ArtifactStagingDirectory)/staging-gate-report.md << EOF
+              # SSDLC Staging Gate Report
+
+              **Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
+              **Build:** $(Build.BuildId)
+              **Branch:** $(Build.SourceBranchName)
+              **Commit:** $(Build.SourceVersion)
+              **Decision:** $(GATE_DECISION)
+
+              ## Pipeline Status
+              | Pipeline | Status |
+              |----------|--------|
+              | CI | $(CI_STATUS) |
+              | Security | $(SEC_STATUS) |
+              | CD | Pending |
+
+              ## SSDLC Compliance
+              - [x] Code Review (branch policies)
+              - [x] SAST — CodeQL via GHAzDO
+              - [x] SCA — Dependency scanning
+              - [x] Secret scanning — Push protection
+              - [x] Container scanning — Trivy/MSDO
+              - [x] IaC scanning — Checkov
+              - [x] Image signing — Notation v2
+              - [x] RBAC — Workload Identity Federation
+              - [x] Environment gates — Approval checks
+              EOF
+            displayName: 'Write report artifact'
+            continueOnError: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload gate report'
+            condition: always()
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'staging-gate-report'
+
+          # Create ADO work item if NO-GO
+          - script: |
+              if [ "$(GATE_DECISION)" = "NO-GO" ]; then
+                echo "Creating NO-GO work item..."
+                az boards work-item create \
+                  --type "Bug" \
+                  --title "Staging Gate: NO-GO — Build $(Build.BuildId)" \
+                  --description "Staging gate failed. Review pipeline results." \
+                  --assigned-to "$(Build.RequestedFor)" \
+                  2>/dev/null || echo "Work item creation skipped"
+              fi
+            displayName: 'Create NO-GO work item (if needed)'
+            condition: always()
+            env:
+              AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)

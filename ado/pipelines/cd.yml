@@ -1,0 +1,263 @@
+# ==============================================================================
+# CD Pipeline — Progressive Deployment: Dev → Staging → Prod
+# ADO equivalent of: .github/workflows/cd.yml
+# Triggered by successful CI pipeline run on main branch
+# ==============================================================================
+trigger: none  # Triggered via pipeline resource
+
+resources:
+  pipelines:
+    - pipeline: CI
+      source: CI                     # Name of the CI pipeline in ADO
+      trigger:
+        branches:
+          include:
+            - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: ssdlc-shared
+  - name: DOTNET_VERSION
+    value: '8.0.x'
+  - name: containerAppImage
+    value: '$(ACR_NAME).azurecr.io/ssdlc-containerapp:$(Build.SourceVersion)'
+  - name: pythonApiImage
+    value: '$(ACR_NAME).azurecr.io/ssdlc-pythonapi:$(Build.SourceVersion)'
+
+stages:
+  # ── Build & Push Container Images ─────────────────────────────
+  - stage: BuildArtifacts
+    displayName: 'Build Artifacts & Container Images'
+    jobs:
+      - job: BuildFunctionApp
+        displayName: 'Publish Function App'
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: 'sdk'
+              version: $(DOTNET_VERSION)
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish Function App'
+            inputs:
+              command: 'publish'
+              projects: 'src/FunctionApp/HelloWorld.Functions.csproj'
+              arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)/functionapp'
+              zipAfterPublish: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload Function App artifact'
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/functionapp'
+              artifactName: 'functionapp'
+
+      - job: BuildContainers
+        displayName: 'Build, Push & Sign Containers'
+        variables:
+          - group: ssdlc-dev
+        steps:
+          # ContainerApp image
+          - template: templates/container-build.yml
+            parameters:
+              serviceConnection: 'azure-dev'
+              acrName: $(ACR_NAME)
+              dockerfilePath: 'src/ContainerApp/Dockerfile'
+              buildContext: 'src/ContainerApp'
+              imageName: 'ssdlc-containerapp'
+              signImage: true
+
+          # PythonApi image
+          - template: templates/container-build.yml
+            parameters:
+              serviceConnection: 'azure-dev'
+              acrName: $(ACR_NAME)
+              dockerfilePath: 'src/PythonApi/Dockerfile'
+              buildContext: 'src/PythonApi'
+              imageName: 'ssdlc-pythonapi'
+              signImage: true
+
+  # ── DEV Deployment ────────────────────────────────────────────
+  - stage: DeployDev
+    displayName: 'Deploy → Dev'
+    dependsOn: BuildArtifacts
+    jobs:
+      - deployment: DeployDev
+        displayName: 'Deploy to Dev'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: functionapp
+
+                - template: templates/azure-deploy.yml
+                  parameters:
+                    serviceConnection: 'azure-dev'
+                    environment: 'dev'
+                    containerAppImage: $(containerAppImage)
+                    pythonApiImage: $(pythonApiImage)
+                    functionAppArtifact: '$(Pipeline.Workspace)/functionapp/**/*.zip'
+
+                - template: templates/health-check.yml
+                  parameters:
+                    healthUrl: 'https://func-ssdlcdemo-dev.azurewebsites.net/api/health'
+                    environmentName: 'dev'
+
+  # ── STAGING Deployment ────────────────────────────────────────
+  - stage: DeployStaging
+    displayName: 'Deploy → Staging'
+    dependsOn: DeployDev
+    jobs:
+      - deployment: DeployStaging
+        displayName: 'Deploy to Staging'
+        environment: 'staging'          # Requires 1 approval (configured in ADO)
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: functionapp
+
+                # Verify container signature before staging deploy
+                - script: |
+                    echo "Installing Notation CLI..."
+                    curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v1.2.0/notation_1.2.0_linux_amd64.tar.gz
+                    tar xzf notation.tar.gz -C /usr/local/bin/ notation
+                    chmod +x /usr/local/bin/notation
+                    notation cert generate-test --default "ssdlc-demo-signing"
+
+                    echo "Verifying container signatures..."
+                    cat > /tmp/trustpolicy.json << 'POLICY'
+                    {
+                      "version": "1.0",
+                      "trustPolicies": [{
+                        "name": "ssdlc-verify",
+                        "registryScopes": ["$(ACR_NAME).azurecr.io/ssdlc-containerapp", "$(ACR_NAME).azurecr.io/ssdlc-pythonapi"],
+                        "signatureVerification": { "level": "strict" },
+                        "trustStores": ["ca:ssdlc-demo-signing"],
+                        "trustedIdentities": ["*"]
+                      }]
+                    }
+                    POLICY
+                    notation policy import /tmp/trustpolicy.json
+                    notation verify "$(containerAppImage)" && echo "ContainerApp: verified ✓"
+                    notation verify "$(pythonApiImage)" && echo "PythonApi: verified ✓"
+                  displayName: 'Verify image signatures'
+                  continueOnError: true
+
+                - template: templates/azure-deploy.yml
+                  parameters:
+                    serviceConnection: 'azure-dev'
+                    environment: 'staging'
+                    bicepParamFile: 'infra/main.staging.bicepparam'
+                    containerAppImage: $(containerAppImage)
+                    pythonApiImage: $(pythonApiImage)
+                    functionAppArtifact: '$(Pipeline.Workspace)/functionapp/**/*.zip'
+
+                - template: templates/health-check.yml
+                  parameters:
+                    healthUrl: 'https://func-ssdlcdemo-staging.azurewebsites.net/api/health'
+                    environmentName: 'staging'
+
+  # ── PRODUCTION Deployment ─────────────────────────────────────
+  - stage: DeployProd
+    displayName: 'Deploy → Production'
+    dependsOn: DeployStaging
+    jobs:
+      - deployment: DeployProd
+        displayName: 'Deploy to Production'
+        environment: 'production'       # Requires 2 approvals + business hours check
+        variables:
+          - group: ssdlc-prod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: functionapp
+
+                # Mandatory signature verification for production
+                - script: |
+                    curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v1.2.0/notation_1.2.0_linux_amd64.tar.gz
+                    tar xzf notation.tar.gz -C /usr/local/bin/ notation
+                    chmod +x /usr/local/bin/notation
+                    notation cert generate-test --default "ssdlc-demo-signing"
+                    cat > /tmp/trustpolicy.json << 'POLICY'
+                    {
+                      "version": "1.0",
+                      "trustPolicies": [{
+                        "name": "ssdlc-verify",
+                        "registryScopes": ["$(ACR_NAME).azurecr.io/ssdlc-containerapp", "$(ACR_NAME).azurecr.io/ssdlc-pythonapi"],
+                        "signatureVerification": { "level": "strict" },
+                        "trustStores": ["ca:ssdlc-demo-signing"],
+                        "trustedIdentities": ["*"]
+                      }]
+                    }
+                    POLICY
+                    notation policy import /tmp/trustpolicy.json
+                    notation verify "$(containerAppImage)" || exit 1
+                    notation verify "$(pythonApiImage)" || exit 1
+                    echo "Both images verified for production ✓"
+                  displayName: 'MANDATORY: Verify image signatures'
+
+                - template: templates/azure-deploy.yml
+                  parameters:
+                    serviceConnection: 'azure-prod'
+                    environment: 'prod'
+                    bicepParamFile: 'infra/main.prod.bicepparam'
+                    containerAppImage: $(containerAppImage)
+                    pythonApiImage: $(pythonApiImage)
+                    functionAppArtifact: '$(Pipeline.Workspace)/functionapp/**/*.zip'
+
+                - template: templates/health-check.yml
+                  parameters:
+                    healthUrl: 'https://func-ssdlcdemo-prod.azurewebsites.net/api/health'
+                    environmentName: 'production'
+
+  # ── Teams Notification ────────────────────────────────────────
+  - stage: Notify
+    displayName: 'Notify Teams'
+    dependsOn:
+      - DeployDev
+      - DeployStaging
+      - DeployProd
+    condition: always()
+    jobs:
+      - job: NotifyTeams
+        displayName: 'Send Teams notification'
+        steps:
+          - script: |
+              WEBHOOK_URL="$(TEAMS_WEBHOOK_URL)"
+              if [ -z "$WEBHOOK_URL" ]; then
+                echo "No TEAMS_WEBHOOK_URL set — skipping notification"
+                exit 0
+              fi
+
+              cat > /tmp/teams-payload.json << EOF
+              {
+                "@type": "MessageCard",
+                "summary": "SSDLC Deployment: Build $(Build.BuildId)",
+                "themeColor": "0076D7",
+                "title": "SSDLC CD Pipeline — Build $(Build.BuildId)",
+                "sections": [{
+                  "facts": [
+                    {"name": "Pipeline", "value": "$(Build.DefinitionName)"},
+                    {"name": "Branch", "value": "$(Build.SourceBranchName)"},
+                    {"name": "Commit", "value": "$(Build.SourceVersion)"},
+                    {"name": "Triggered By", "value": "$(Build.RequestedFor)"}
+                  ]
+                }]
+              }
+              EOF
+
+              curl -H "Content-Type: application/json" -d @/tmp/teams-payload.json "$WEBHOOK_URL"
+              echo "Teams notification sent ✓"
+            displayName: 'Send deployment notification'
+            continueOnError: true

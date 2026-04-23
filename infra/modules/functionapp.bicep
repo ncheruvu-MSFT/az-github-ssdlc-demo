@@ -51,11 +51,11 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
     allowSharedKeyAccess: false
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: environment == 'prod' ? 'Disabled' : 'Enabled'
     defaultToOAuthAuthentication: true
     networkAcls: {
       bypass: 'AzureServices'
-      defaultAction: 'Allow'
+      defaultAction: environment == 'prod' ? 'Deny' : 'Allow'
     }
   }
 }

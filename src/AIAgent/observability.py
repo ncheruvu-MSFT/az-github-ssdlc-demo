@@ -10,7 +10,7 @@ from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry import trace
 
 
-_initialized = False
+_state: dict[str, bool] = {"initialized": False}
 
 
 def setup_tracing() -> None:
@@ -18,8 +18,7 @@ def setup_tracing() -> None:
 
     Safe to call multiple times — only initializes once.
     """
-    global _initialized
-    if _initialized:
+    if _state["initialized"]:
         return
 
     conn_string = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
@@ -29,7 +28,7 @@ def setup_tracing() -> None:
     else:
         print("APPLICATIONINSIGHTS_CONNECTION_STRING not set — tracing disabled")
 
-    _initialized = True
+    _state["initialized"] = True
 
 
 def get_tracer() -> trace.Tracer:

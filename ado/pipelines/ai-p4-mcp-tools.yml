@@ -1,0 +1,300 @@
+# ==============================================================================
+# P4: MCP Tools — Schema Validation & Tool Security Pipeline
+# ADO equivalent of: .github/workflows/ai-p4-mcp-tools.yml
+# ==============================================================================
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/AIAgent/config/tools/**
+      - src/AIAgent/tool_schema_validation.py
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/AIAgent/config/tools/**
+      - src/AIAgent/tool_schema_validation.py
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: ssdlc-shared
+  - name: PYTHON_VERSION
+    value: '3.11'
+
+stages:
+  # ── Build + Tool Schema Validation ────────────────────────────
+  - stage: BuildToolValidation
+    displayName: 'Build + Tool Schema Val.'
+    jobs:
+      - job: Validate
+        displayName: 'Schema + Permission Audit'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r src/AIAgent/requirements.txt
+              pip install -r src/AIAgent/requirements-dev.txt
+            displayName: 'Install dependencies'
+
+          - script: python src/AIAgent/checkimports.py
+            displayName: 'Check module imports'
+
+          - script: |
+              echo "Validating MCP tool JSON schemas..."
+              python src/AIAgent/tool_schema_validation.py
+            displayName: 'Validate tool schemas'
+
+          - script: |
+              echo "Auditing tool permissions for least-privilege..."
+              python -c "
+              import sys
+              sys.path.insert(0, 'src/AIAgent')
+              from tool_schema_validation import validate_tool_permissions
+              result = validate_tool_permissions()
+              print(f'Permission audit: {result[\"status\"]}')
+              if result.get('errors'):
+                  for e in result['errors']:
+                      print(f'  ERROR: {e}')
+                  sys.exit(1)
+              "
+            displayName: 'Permission scope audit'
+
+          - script: |
+              echo "Running contract tests..."
+              python -c "
+              import json, sys
+              from pathlib import Path
+              tools_dir = Path('src/AIAgent/config/tools')
+              if not tools_dir.exists():
+                  print('No tools directory — skipping')
+                  sys.exit(0)
+              for f in tools_dir.glob('*.json'):
+                  tool = json.loads(f.read_text())
+                  schema = tool.get('inputSchema', {})
+                  required = schema.get('required', [])
+                  properties = schema.get('properties', {})
+                  for r in required:
+                      assert r in properties, f'{f.name}: required \"{r}\" not in properties'
+                  print(f'  ✓ {f.name}: contract valid')
+              print('Contract tests passed')
+              "
+            displayName: 'Contract test tool interfaces'
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: 'src/AIAgent'
+              artifactName: 'p4-artifacts'
+
+  # ── E2E Agent + Tool Eval ─────────────────────────────────────
+  - stage: ToolEval
+    displayName: 'E2E Agent + Tool Eval'
+    dependsOn: BuildToolValidation
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: EvalTools
+        displayName: 'Tool Correctness Tests'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p4-artifacts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p4-artifacts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'E2E tool correctness test'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p4-artifacts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python e2etest.py
+                  timeoutInMinutes: 15
+
+                - task: AzureCLI@2
+                  displayName: 'Tool call accuracy eval'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p4-artifacts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      python agent_eval.py
+                  timeoutInMinutes: 20
+                  continueOnError: true
+
+                - task: PublishPipelineArtifact@1
+                  condition: always()
+                  inputs:
+                    targetPath: '$(Pipeline.Workspace)/p4-artifacts/data_folder'
+                    artifactName: 'p4-eval-results'
+
+  # ── Red Team — Tool Abuse ─────────────────────────────────────
+  - stage: RedTeamToolAbuse
+    displayName: 'Red Team — Tool Abuse'
+    dependsOn: ToolEval
+    jobs:
+      - deployment: ToolAbuse
+        displayName: 'Tool Abuse Testing'
+        environment: 'staging'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p4-artifacts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p4-artifacts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Prompt injection via tool output'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p4-artifacts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python redteam_classic.py
+                  continueOnError: true
+                  timeoutInMinutes: 30
+
+                - task: AzureCLI@2
+                  displayName: 'Tool permission boundary test'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p4-artifacts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python content_safety.py
+                  continueOnError: true
+                  timeoutInMinutes: 20
+
+                - task: PublishPipelineArtifact@1
+                  condition: always()
+                  inputs:
+                    targetPath: '$(Pipeline.Workspace)/p4-artifacts/data_folder'
+                    artifactName: 'p4-redteam-results'
+
+  # ── Safety & Tool Gate ────────────────────────────────────────
+  - stage: SafetyToolGate
+    displayName: 'Safety & Tool Gate'
+    dependsOn: RedTeamToolAbuse
+    jobs:
+      - job: Gate
+        displayName: 'Dual Gate Decision'
+        steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: 'p4-artifacts'
+              path: '$(Pipeline.Workspace)/scripts'
+            continueOnError: true
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              cd $(Pipeline.Workspace)/scripts
+              pip install -r requirements.txt 2>/dev/null || true
+              python gate_logic.py safety
+            displayName: 'Run safety gate'
+
+          - script: |
+              cd $(Pipeline.Workspace)/scripts
+              python gate_logic.py tool
+            displayName: 'Run tool gate'
+
+  # ── Deploy MCP → Agent → App ──────────────────────────────────
+  - stage: Deploy
+    displayName: 'Deploy MCP → Agent → App'
+    dependsOn: SafetyToolGate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployMCP
+        displayName: 'Bind MCP + Deploy Agent'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p4-artifacts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p4-artifacts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Bind MCP endpoints to agent'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p4-artifacts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python create_agent.py
+
+                - task: AzureCLI@2
+                  displayName: 'E2E smoke test with tool calls'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p4-artifacts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      export APPLICATIONINSIGHTS_CONNECTION_STRING=$(APPINSIGHTS_CONNECTION_STRING)
+                      python e2etest.py
+                  continueOnError: true
+                  timeoutInMinutes: 10

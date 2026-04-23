@@ -1,0 +1,259 @@
+# ==============================================================================
+# P1: DevOps Model — Prompt Evaluation + Content Safety Pipeline
+# ADO equivalent of: .github/workflows/ai-p1-devops-model.yml
+# ==============================================================================
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/AIAgent/**
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/AIAgent/**
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: ssdlc-shared
+  - name: PYTHON_VERSION
+    value: '3.11'
+
+stages:
+  # ── Build & Validate ──────────────────────────────────────────
+  - stage: BuildValidate
+    displayName: 'Build & Validate'
+    jobs:
+      - job: Build
+        displayName: 'Lint, Compile, Test'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r src/AIAgent/requirements.txt
+              pip install -r src/AIAgent/requirements-dev.txt
+            displayName: 'Install dependencies'
+
+          - script: python src/AIAgent/checkimports.py
+            displayName: 'Check module imports'
+
+          - script: |
+              pip install ruff
+              ruff check src/AIAgent/ --output-format=github
+            displayName: 'Ruff linting'
+            continueOnError: true
+
+          - script: |
+              curl -Lo gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+              tar xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks
+              chmod +x /usr/local/bin/gitleaks
+              gitleaks detect --source . --verbose
+            displayName: 'Gitleaks secret scan'
+            continueOnError: true
+
+          - script: |
+              pip install pytest
+              python -m pytest tests/AIAgent.Tests/ \
+                --tb=short \
+                --junitxml=$(Build.ArtifactStagingDirectory)/p1-tests.xml \
+                -v || true
+            displayName: 'Pytest unit tests'
+
+          - task: PublishTestResults@2
+            condition: always()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/p1-tests.xml'
+              searchFolder: '$(Build.ArtifactStagingDirectory)'
+              testRunTitle: 'P1 AI Agent Tests'
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: 'src/AIAgent'
+              artifactName: 'p1-agent-scripts'
+
+  # ── Prompt Evaluation ─────────────────────────────────────────
+  - stage: PromptEval
+    displayName: 'Prompt Evaluation'
+    dependsOn: BuildValidate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: PromptRegression
+        displayName: 'Prompt Regression Tests'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p1-agent-scripts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p1-agent-scripts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Run prompt regression eval'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p1-agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      python agenteval_classic.py
+                  timeoutInMinutes: 20
+
+                - task: PublishPipelineArtifact@1
+                  condition: always()
+                  inputs:
+                    targetPath: '$(Pipeline.Workspace)/p1-agent-scripts/data_folder'
+                    artifactName: 'p1-eval-results'
+
+  # ── Content Safety ────────────────────────────────────────────
+  - stage: ContentSafety
+    displayName: 'Content Safety'
+    dependsOn: BuildValidate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: SafetyCheck
+        displayName: 'Content Filter Validation'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p1-agent-scripts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p1-agent-scripts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Content safety validation'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p1-agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python content_safety.py
+                  timeoutInMinutes: 20
+
+                - script: |
+                    pip install pip-audit
+                    pip-audit -r $(Pipeline.Workspace)/p1-agent-scripts/requirements.txt || true
+                  displayName: 'pip-audit OWASP check'
+                  continueOnError: true
+
+                - task: PublishPipelineArtifact@1
+                  condition: always()
+                  inputs:
+                    targetPath: '$(Pipeline.Workspace)/p1-agent-scripts/data_folder'
+                    artifactName: 'p1-safety-results'
+
+  # ── Quality Gate ──────────────────────────────────────────────
+  - stage: QualityGate
+    displayName: 'Quality Gate'
+    dependsOn:
+      - PromptEval
+      - ContentSafety
+    jobs:
+      - job: Gate
+        displayName: 'Quality Gate Decision'
+        steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: 'p1-agent-scripts'
+              path: '$(Pipeline.Workspace)/scripts'
+            continueOnError: true
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              cd $(Pipeline.Workspace)/scripts
+              pip install -r requirements.txt 2>/dev/null || true
+              python gate_logic.py quality
+            displayName: 'Run quality gate'
+
+  # ── Deploy ────────────────────────────────────────────────────
+  - stage: Deploy
+    displayName: 'Deploy Agent'
+    dependsOn: QualityGate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployAgent
+        displayName: 'Deploy to Dev'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p1-agent-scripts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p1-agent-scripts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Create/Update Agent'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p1-agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python create_agent.py
+
+                - task: AzureCLI@2
+                  displayName: 'E2E Smoke Test'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p1-agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python e2etest.py
+                  continueOnError: true
+                  timeoutInMinutes: 10

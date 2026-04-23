@@ -1,0 +1,298 @@
+# ==============================================================================
+# P3: FoundryIQ — Policy Validation + Multi-Model Evaluation
+# ADO equivalent of: .github/workflows/ai-p3-foundryiq.yml
+# ==============================================================================
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/AIAgent/config/**
+      - src/AIAgent/policy_validation.py
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/AIAgent/config/**
+      - src/AIAgent/policy_validation.py
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: ssdlc-shared
+  - name: PYTHON_VERSION
+    value: '3.11'
+
+stages:
+  # ── Build + Policy Validation ─────────────────────────────────
+  - stage: BuildPolicyValidation
+    displayName: 'Build + Policy Validation'
+    jobs:
+      - job: Validate
+        displayName: 'Validate Policies & Routes'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r src/AIAgent/requirements.txt
+              pip install -r src/AIAgent/requirements-dev.txt
+            displayName: 'Install dependencies'
+
+          - script: python src/AIAgent/checkimports.py
+            displayName: 'Check module imports'
+
+          - script: |
+              echo "Validating FoundryIQ policies..."
+              python src/AIAgent/policy_validation.py
+            displayName: 'Validate policy rules'
+
+          - script: |
+              echo "Verifying model routing config..."
+              python -c "
+              import sys
+              sys.path.insert(0, 'src/AIAgent')
+              from policy_validation import validate_multi_model_eval_config
+              result = validate_multi_model_eval_config()
+              print(f'Config status: {result[\"status\"]}')
+              if result.get('errors'):
+                  for e in result['errors']:
+                      print(f'  ERROR: {e}')
+                  sys.exit(1)
+              "
+            displayName: 'Validate model routing'
+
+          - script: |
+              echo "Schema-linting config JSON files..."
+              python -c "
+              import json, sys
+              from pathlib import Path
+              config_dir = Path('src/AIAgent/config')
+              if config_dir.exists():
+                  for f in config_dir.glob('*.json'):
+                      try:
+                          json.loads(f.read_text())
+                          print(f'  ✓ {f.name}: valid JSON')
+                      except json.JSONDecodeError as e:
+                          print(f'  ✗ {f.name}: {e}')
+                          sys.exit(1)
+              print('All config files valid')
+              "
+            displayName: 'JSON schema lint'
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: 'src/AIAgent'
+              artifactName: 'p3-config'
+
+  # ── Multi-Model Evaluation ────────────────────────────────────
+  - stage: MultiModelEval
+    displayName: 'Multi-Model Evaluation'
+    dependsOn: BuildPolicyValidation
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: ModelEval
+        displayName: 'Primary + Fallback Model Eval'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p3-config
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p3-config/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Evaluate primary model (gpt-4o)'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p3-config
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      python agenteval_classic.py
+                  timeoutInMinutes: 20
+
+                - task: AzureCLI@2
+                  displayName: 'Evaluate fallback model (gpt-4o-mini)'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p3-config
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=gpt-4o-mini
+                      python agenteval_classic.py
+                  timeoutInMinutes: 20
+                  continueOnError: true
+
+                - script: |
+                    echo "### Cost Estimation Summary"
+                    echo "| Model | Cost/Query | Total Budget |"
+                    echo "|-------|-----------|--------------|"
+                    echo "| gpt-4o | ~\$0.005 | \$50/day |"
+                    echo "| gpt-4o-mini | ~\$0.0003 | \$10/day |"
+                  displayName: 'Cost estimation'
+
+                - task: PublishPipelineArtifact@1
+                  condition: always()
+                  inputs:
+                    targetPath: '$(Pipeline.Workspace)/p3-config/data_folder'
+                    artifactName: 'p3-eval-results'
+
+  # ── Red Team — Policy Bypass ──────────────────────────────────
+  - stage: RedTeamPolicyBypass
+    displayName: 'Red Team — Policy Bypass'
+    dependsOn: MultiModelEval
+    jobs:
+      - deployment: PolicyBypass
+        displayName: 'Policy Bypass Testing'
+        environment: 'staging'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p3-config
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p3-config/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Policy bypass attacks'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p3-config
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python redteam_classic.py
+                  continueOnError: true
+                  timeoutInMinutes: 30
+
+                - task: AzureCLI@2
+                  displayName: 'Per-model content safety'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p3-config
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python content_safety.py
+                  continueOnError: true
+                  timeoutInMinutes: 20
+
+                - task: PublishPipelineArtifact@1
+                  condition: always()
+                  inputs:
+                    targetPath: '$(Pipeline.Workspace)/p3-config/data_folder'
+                    artifactName: 'p3-redteam-results'
+
+  # ── Compliance Gate ───────────────────────────────────────────
+  - stage: ComplianceGate
+    displayName: 'Compliance Gate'
+    dependsOn: RedTeamPolicyBypass
+    jobs:
+      - job: Gate
+        displayName: 'Compliance Gate Decision'
+        steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: 'p3-config'
+              path: '$(Pipeline.Workspace)/scripts'
+            continueOnError: true
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              cd $(Pipeline.Workspace)/scripts
+              pip install -r requirements.txt 2>/dev/null || true
+              python gate_logic.py compliance
+            displayName: 'Run compliance gate'
+
+  # ── Deploy ────────────────────────────────────────────────────
+  - stage: Deploy
+    displayName: 'Deploy Agent + Policies'
+    dependsOn: ComplianceGate
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployAgent
+        displayName: 'Deploy with FoundryIQ'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: p3-config
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/p3-config/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy agent with policies'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p3-config
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python create_agent.py
+
+                - task: AzureCLI@2
+                  displayName: 'Smoke test with routing'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/p3-config
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python e2etest.py
+                  continueOnError: true
+                  timeoutInMinutes: 10

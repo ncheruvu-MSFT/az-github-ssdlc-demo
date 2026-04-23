@@ -22,6 +22,7 @@ permissions:
   checks: read
   security-events: read
   actions: read
+  vulnerability-alerts: read
 
 env:
   ADO_ORG: "https://dev.azure.com/ncheruvu0468"

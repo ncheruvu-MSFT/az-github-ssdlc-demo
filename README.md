@@ -78,11 +78,7 @@ az-github-ssdlc-demo/
 │   │   ├── ci.yml                    # CI: build, test, security scan
 │   │   ├── cd.yml                    # CD: deploy dev → staging → prod
 │   │   ├── codeql.yml                # CodeQL SAST analysis
-│   │   ├── dependency-review.yml     # Dependency vulnerability review
-│   │   ├── dependabot-auto-merge.yml # Auto-merge patch Dependabot PRs
-│   │   ├── staging-gate.yml          # Staging go/no-go release report
-│   │   ├── ado-copilot-bridge.yml    # ADO → GitHub Copilot Agent bridge
-│   │   └── ai-agent-ops.yml         # AI Agent Ops: eval + red team pipeline
+│   │   └── dependency-review.yml     # Dependency vulnerability review
 │   ├── dependabot.yml                # Automated dependency updates
 │   ├── CODEOWNERS                    # Required reviewers by path
 │   ├── PULL_REQUEST_TEMPLATE.md      # SSDLC checklist for PRs
@@ -94,7 +90,7 @@ az-github-ssdlc-demo/
 │   │   │   ├── OrderOrchestration.cs # Durable Functions workflow
 │   │   │   └── ServiceBusProcessor.cs# Service Bus triggered functions
 │   │   ├── Program.cs
-│   │   ├── host.json, time
+│   │   ├── host.json
 │   │   └── HelloWorld.Functions.csproj
 │   ├── ContainerApp/                 # C# Minimal API on ACA
 │   │   ├── Program.cs               # Hello world, health, info endpoints
@@ -105,18 +101,10 @@ az-github-ssdlc-demo/
 │       ├── Dockerfile                # Slim image, non-root, healthcheck
 │       ├── requirements.txt
 │       └── requirements-dev.txt
-│   └── AIAgent/                      # AI Agent Ops (Azure AI Foundry)
-│       ├── create_agent.py           # Agent creation + deployment
-│       ├── run_agent.py              # Test existing agents
-│       ├── agent_eval.py             # Quality evaluation (6 metrics)
-│       ├── red_team.py               # Security red team testing
-│       ├── observability.py          # OpenTelemetry tracing
-│       └── requirements.txt
 ├── tests/
 │   ├── FunctionApp.Tests/            # xUnit + FluentAssertions + Moq
 │   ├── ContainerApp.Tests/           # Integration tests (WebApplicationFactory)
-│   ├── PythonApi.Tests/              # pytest + httpx + coverage
-│   └── AIAgent.Tests/                # AI Agent module tests
+│   └── PythonApi.Tests/              # pytest + httpx + coverage
 ├── infra/
 │   ├── main.bicep                    # Main orchestrator (subscription scope)
 │   ├── main.dev.bicepparam           # Dev environment parameters
@@ -128,8 +116,7 @@ az-github-ssdlc-demo/
 │       ├── servicebus.bicep          # Service Bus + queues + topics
 │       ├── monitoring.bicep          # Log Analytics + App Insights + alerts
 │       ├── functionapp.bicep         # Function App + storage + diagnostics
-│       ├── containerapp.bicep        # ACA environment + C# + Python apps
-│       └── aifoundry.bicep           # Azure AI Services + GPT-4o deployment
+│       └── containerapp.bicep        # ACA environment + C# + Python apps
 ├── SsdlcDemo.sln
 ├── SECURITY.md
 └── .gitignore
@@ -195,13 +182,12 @@ Developer
     │       ├── All CI checks pass
     │       ├── 2 approvals required
     │       └── Merge to main
-    │Notation sign container images (supply chain)
+    │
+    └── CD Pipeline (on main merge)
+            ├── Build artifacts + container images
             ├── Deploy to DEV (automatic)
             │   └── Smoke tests
             ├── Deploy to STAGING (automatic)
-            │   └── Staging gate report (go/no-go)
-            └── Deploy to PROD (manual approval gate)
-                └── Health checks + Teams notification (automatic)
             │   └── Integration tests
             └── Deploy to PROD (manual approval gate)
                 └── Health checks
@@ -219,15 +205,12 @@ Developer
 | **Bandit** | SAST | Python security | `ci.yml` |
 | **MS Defender for Containers** | Container scan | Docker images | `ci.yml` |
 | **Checkov** | IaC scan | Bicep templates | `ci.yml` |
-| **Notation** | Image signing | Container images | `cd.yml` |
 | **Safety** | SCA | Python dependencies | `ci.yml` |
 | **dotnet audit** | SCA | .NET dependencies | `ci.yml` |
 | **Dependency Review** | SCA | All PRs | `dependency-review.yml` |
 | **Dependabot** | Auto-update | All ecosystems | `dependabot.yml` |
 | **GHAS Malware Scanning** | Malware detection | Commits & uploads | GitHub Advanced Security |
 | **GHAS Vulnerability Scanning** | CVE detection | Code & dependencies | GitHub Advanced Security |
-| **AI Red Team** | Safety testing | AI Agent responses | `ai-agent-ops.yml` |
-| **AI Evaluation** | Quality metrics | AI Agent behavior | `ai-agent-ops.yml` |
 
 ### Infrastructure Security
 
@@ -328,140 +311,8 @@ az deployment sub create \
 
 1. **Enable GitHub Advanced Security** (secret scanning, code scanning)
 2. **Create environments**: `dev`, `staging`, `production` (with approval on prod)
-   - `TEAMS_WEBHOOK_URL` (optional — for Teams deployment notifications)
-5. **Apply branch protection** from `.github/branch-protection.json`
-6. **Enable Dependabot** alerts and security updates
-
----
-
-## ADO ↔ GitHub Integration
-
-### Work Item Traceability
-
-Azure DevOps Boards links to GitHub via `AB#<id>` references in commits and PRs:
-
-```bash
-git commit -m "feat: add input validation AB#32"
-```
-
-This creates bidirectional traceability: ADO work item → GitHub commit → PR → CI/CD results → deployment.
-
-### ADO → Copilot Agent Bridge
-
-The `ado-copilot-bridge.yml` workflow enables ADO work items to trigger GitHub Copilot Coding Agent:
-
-1. ADO work item dispatches a `repository_dispatch` event to the GitHub repo
-2. GitHub Copilot Agent picks up the task and creates a PR
-3. CI validates the PR automatically
-4. Human reviewer merges
-
-### Staging Gate Report
-
-The `staging-gate.yml` workflow generates a release readiness report before production:
-
-- Verifies all CI checks passed
-- Checks container image signatures (Notation)
-- Validates infrastructure deployment status
-- Produces a go/no-go summary in GitHub Actions
-
----
-
-## AI Agent Ops (Microsoft Foundry)
-
-This demo includes an **AI Agent CI/CD pipeline** using the Microsoft Agent Framework + Azure AI Foundry, demonstrating SSDLC practices for AI/ML workloads.
-
-### AI Agent Lifecycle
-
-```
-Create Agent ──► Test Agent ──► Evaluate Quality ──► Red Team Security ──► Verify Prod
-   (Dev)          (Dev)          (Staging)             (Staging)            (Production)
-```
-
-### Pipeline: `ai-agent-ops.yml`
-
-| Stage | Environment | Action | Quality Gate |
-|-------|-------------|--------|-------------|
-| **Build** | CI | Syntax validation, unit tests, artifact upload | Tests pass |
-| **Deploy** | Dev | Create/update agent via Azure AI Foundry | Agent responds |
-| **Evaluate** | Staging | Run evaluation metrics (6 built-in evaluators) | Metrics recorded |
-| **Red Team** | Staging | Security attack simulation (7 safety criteria) | No critical findings |
-| **Verify** | Production | Smoke test production agent | Agent healthy |
-
-### Evaluation Metrics
-
-| Category | Metric | Description |
-|----------|--------|-------------|
-| **System** | Task Completion | Did the agent complete the task? |
-| **System** | Task Adherence | Did the agent follow instructions? |
-| **System** | Intent Resolution | Did the agent understand the user's intent? |
-| **RAG** | Groundedness | Are responses grounded in source data? |
-| **RAG** | Relevance | Are responses relevant to the query? |
-| **Process** | Tool Call Accuracy | Did the agent call tools correctly? |
-
-### Red Team Security Testing
-
-| Risk Category | Evaluator | Purpose |
-|---------------|-----------|---------|
-| **Prohibited Actions** | `builtin.prohibited_actions` | Agent refuses harmful requests |
-| **Sensitive Data Leakage** | `builtin.sensitive_data_leakage` | No credential/PII exposure |
-| **Self Harm** | `builtin.self_harm` | Content safety |
-| **Violence** | `builtin.violence` | Content safety |
-| **Sexual** | `builtin.sexual` | Content safety |
-| **Hate/Unfairness** | `builtin.hate_unfairness` | Bias and fairness |
-| **Task Adherence** | `builtin.task_adherence` | Agent stays on-task under attack |
-
-Attack strategies: Flip, Base64 (extensible to ROT13, UnicodeConfusable, CharSwap, Morse, Leetspeak, Binary).
-
-### AI Agent Source Files
-
-```
-src/AIAgent/
-├── create_agent.py      # Create agent in Azure AI Foundry
-├── run_agent.py         # Query existing agent (MCP approval handling)
-├── agent_eval.py        # Evaluation with 6 built-in metrics
-├── red_team.py          # Red team security testing (7 safety criteria)
-├── observability.py     # OpenTelemetry + Azure Monitor tracing
-├── requirements.txt     # Production dependencies
-└── requirements-dev.txt # Dev/test dependencies
-```
-
-### Infrastructure
-
-The `infra/modules/aifoundry.bicep` module provisions:
-- **Azure AI Services** (Cognitive Services account)
-- **GPT-4o** model deployment (GlobalStandard SKU)
-- Diagnostic settings → Log Analytics
-
-Set `deployAIFoundry=true` in `.bicepparam` files to enable.
-
----
-
-## Demo Walkthrough
-
-### Quick Demo Flow (15 min)
-
-1. **Show ADO Board** — Sprint planning with work items linked to GitHub
-2. **Create a feature branch** → push code → open PR
-3. **Watch CI run** — 8 parallel checks (build, test, CodeQL, Defender, Checkov, etc.)
-4. **Show Security tab** — CodeQL findings, Dependabot alerts, secret scanning
-5. **Merge to main** → CD auto-deploys to dev → staging → manual gate → prod
-6. **Show staging gate report** — go/no-go summary
-7. **Verify health endpoints** — `/health`, `/api/hello`, `/api/time`
-
-### API Endpoints Reference
-
-| Service | Endpoint | Purpose |
-|---------|----------|---------|
-| Container App (C#) | `GET /api/hello?name=Demo` | Hello world with input validation |
-| Container App (C#) | `GET /api/time` | UTC time endpoint |
-| Container App (C#) | `GET /api/info` | Environment info |
-| Container App (C#) | `GET /health` | Health check |
-| Python API | `GET /api/hello?name=Demo` | Hello world |
-| Python API | `POST /api/echo` | Echo JSON body |
-| Python API | `GET /api/info` | Environment info |
-| Python API | `GET /health` | Health check |
-| Function App | `GET /api/hello?name=Demo` | Hello world |
-| Function App | `GET /api/health` | Health check |
+3. **Configure OIDC** for Azure: Create App Registration + Federated Credentials
+4. **Set repository secrets**:
    - `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
    - `AZURE_CLIENT_ID_PROD`, `AZURE_SUBSCRIPTION_ID_PROD`
    - `ACR_NAME`

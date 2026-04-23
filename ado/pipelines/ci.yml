@@ -1,0 +1,161 @@
+# ==============================================================================
+# CI Pipeline — Build, Test, Lint, Coverage
+# ADO equivalent of: .github/workflows/ci.yml
+# ==============================================================================
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/**
+      - tests/**
+      - infra/**
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: ssdlc-shared
+  - name: DOTNET_VERSION
+    value: '8.0.x'
+  - name: PYTHON_VERSION
+    value: '3.12'
+  - name: buildConfiguration
+    value: 'Release'
+
+stages:
+  # ── Stage 1: .NET Build + Test ────────────────────────────────
+  - stage: DotNet
+    displayName: '.NET Build & Test'
+    jobs:
+      - job: BuildAndTest
+        displayName: 'Build, Test, Coverage'
+        steps:
+          - template: templates/dotnet-build.yml
+            parameters:
+              dotnetVersion: $(DOTNET_VERSION)
+              projects: |
+                src/FunctionApp/HelloWorld.Functions.csproj
+                src/ContainerApp/HelloWorld.ContainerApp.csproj
+              testProjects: |
+                tests/FunctionApp.Tests/HelloWorld.Functions.Tests.csproj
+                tests/ContainerApp.Tests/HelloWorld.ContainerApp.Tests.csproj
+              configuration: $(buildConfiguration)
+              publishArtifact: true
+              artifactName: 'dotnet-artifacts'
+
+  # ── Stage 2: Python Build + Test ──────────────────────────────
+  - stage: Python
+    displayName: 'Python Build & Test'
+    dependsOn: []
+    jobs:
+      - job: BuildAndTest
+        displayName: 'Lint, Test, Coverage'
+        steps:
+          - template: templates/python-build.yml
+            parameters:
+              pythonVersion: $(PYTHON_VERSION)
+              sourceDir: 'src/PythonApi'
+              testDir: 'tests/PythonApi.Tests'
+              requirementsFile: 'requirements.txt'
+              requirementsDevFile: 'requirements-dev.txt'
+              runLint: true
+              publishArtifact: true
+              artifactName: 'python-artifacts'
+
+  # ── Stage 3: Security Scanning ────────────────────────────────
+  - stage: Security
+    displayName: 'Security Scanning'
+    dependsOn: []
+    jobs:
+      - job: MSDO
+        displayName: 'Microsoft Security DevOps'
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Setup .NET (for build)'
+            inputs:
+              packageType: 'sdk'
+              version: $(DOTNET_VERSION)
+
+          - task: MicrosoftSecurityDevOps@1
+            displayName: 'Run MSDO (Bandit, Checkov, Trivy, ESLint)'
+            inputs:
+              categories: 'code,artifacts,IaC'
+              tools: 'bandit,checkov,trivy'
+
+          # GHAzDO: If GitHub Advanced Security for Azure DevOps enabled,
+          # CodeQL + Dependency scanning runs automatically. Results in
+          # Repos → Advanced Security tab.
+
+      - job: ContainerScan
+        displayName: 'Container Image Scan'
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: 'sdk'
+              version: $(DOTNET_VERSION)
+
+          - script: |
+              echo "Building container images for scanning..."
+              docker build -t ssdlc-containerapp:scan -f src/ContainerApp/Dockerfile .
+              docker build -t ssdlc-pythonapi:scan -f src/PythonApi/Dockerfile .
+            displayName: 'Build container images'
+
+          - script: |
+              echo "Installing Trivy..."
+              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              echo "Scanning ContainerApp image..."
+              trivy image --format sarif --output $(Build.ArtifactStagingDirectory)/containerapp-trivy.sarif ssdlc-containerapp:scan
+              echo "Scanning PythonApi image..."
+              trivy image --format sarif --output $(Build.ArtifactStagingDirectory)/pythonapi-trivy.sarif ssdlc-pythonapi:scan
+              echo "Container scan complete"
+            displayName: 'Trivy container scan'
+            continueOnError: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload SARIF results'
+            condition: always()
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'container-scan-results'
+
+      - job: InfraValidate
+        displayName: 'IaC Validation (Bicep)'
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Bicep lint + compile'
+            inputs:
+              azureSubscription: 'azure-dev'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Linting Bicep files..."
+                az bicep lint --file infra/main.bicep
+                echo "Compiling Bicep to ARM..."
+                az bicep build --file infra/main.bicep --stdout > /dev/null
+                echo "Bicep validation passed ✓"
+            continueOnError: true
+
+          - script: |
+              pip install checkov
+              checkov -d infra/ --framework bicep \
+                --output sarif \
+                --output-file-path $(Build.ArtifactStagingDirectory)/checkov-results.sarif \
+                --soft-fail
+            displayName: 'Checkov IaC scan'
+            continueOnError: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload IaC scan results'
+            condition: always()
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'iac-scan-results'

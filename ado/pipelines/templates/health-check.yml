@@ -1,0 +1,45 @@
+# ==============================================================================
+# Reusable Template — Post-Deploy Health Check
+# Usage:
+#   - template: templates/health-check.yml
+#     parameters:
+#       healthUrl: 'https://func-ssdlcdemo-dev.azurewebsites.net/api/health'
+# ==============================================================================
+
+parameters:
+  - name: healthUrl
+    type: string
+  - name: maxRetries
+    type: number
+    default: 12
+  - name: retryIntervalSeconds
+    type: number
+    default: 10
+  - name: environmentName
+    type: string
+    default: ''
+
+steps:
+  - script: |
+      echo "Health check: ${{ parameters.healthUrl }}"
+      echo "Max retries: ${{ parameters.maxRetries }}, interval: ${{ parameters.retryIntervalSeconds }}s"
+
+      RETRIES=0
+      MAX=${{ parameters.maxRetries }}
+      INTERVAL=${{ parameters.retryIntervalSeconds }}
+
+      while [ $RETRIES -lt $MAX ]; do
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ parameters.healthUrl }}" 2>/dev/null || echo "000")
+        if [ "$HTTP_CODE" = "200" ]; then
+          echo "✓ Health check passed (HTTP $HTTP_CODE) after $RETRIES retries"
+          exit 0
+        fi
+        RETRIES=$((RETRIES + 1))
+        echo "  Attempt $RETRIES/$MAX — HTTP $HTTP_CODE — retrying in ${INTERVAL}s..."
+        sleep $INTERVAL
+      done
+
+      echo "✗ Health check FAILED after $MAX retries"
+      exit 1
+    displayName: 'Health check — ${{ parameters.environmentName }}'
+    timeoutInMinutes: 5

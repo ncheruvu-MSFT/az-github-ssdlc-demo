@@ -1,0 +1,104 @@
+# ==============================================================================
+# Reusable Template — .NET Build + Test
+# Usage:
+#   - template: templates/dotnet-build.yml
+#     parameters:
+#       projects: '**/*.csproj'
+#       testProjects: 'tests/**/*.csproj'
+# ==============================================================================
+
+parameters:
+  - name: dotnetVersion
+    type: string
+    default: '8.0.x'
+  - name: projects
+    type: string
+    default: '**/*.csproj'
+  - name: testProjects
+    type: string
+    default: 'tests/**/*.csproj'
+  - name: configuration
+    type: string
+    default: 'Release'
+  - name: coverageThreshold
+    type: number
+    default: 60
+  - name: publishArtifact
+    type: boolean
+    default: true
+  - name: artifactName
+    type: string
+    default: 'dotnet-build'
+
+steps:
+  - task: UseDotNet@2
+    displayName: 'Setup .NET ${{ parameters.dotnetVersion }}'
+    inputs:
+      packageType: 'sdk'
+      version: ${{ parameters.dotnetVersion }}
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore NuGet packages'
+    inputs:
+      command: 'restore'
+      projects: ${{ parameters.projects }}
+      feedsToUse: 'select'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build (${{ parameters.configuration }})'
+    inputs:
+      command: 'build'
+      projects: ${{ parameters.projects }}
+      arguments: '--configuration ${{ parameters.configuration }} --no-restore -warnaserror'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Run .NET tests'
+    inputs:
+      command: 'test'
+      projects: ${{ parameters.testProjects }}
+      arguments: >-
+        --configuration ${{ parameters.configuration }}
+        --no-build
+        --logger trx
+        --collect:"XPlat Code Coverage"
+        -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+    continueOnError: false
+
+  - task: PublishTestResults@2
+    displayName: 'Publish .NET test results'
+    condition: always()
+    inputs:
+      testResultsFormat: 'VSTest'
+      testResultsFiles: '**/*.trx'
+      mergeTestResults: true
+      testRunTitle: '.NET Tests'
+
+  - task: PublishCodeCoverageResults@2
+    displayName: 'Publish code coverage'
+    condition: always()
+    inputs:
+      summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Check vulnerable NuGet packages'
+    inputs:
+      command: 'custom'
+      custom: 'list'
+      arguments: 'package --vulnerable --include-transitive'
+      projects: ${{ parameters.projects }}
+    continueOnError: true
+
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish artifacts'
+      inputs:
+        command: 'publish'
+        projects: ${{ parameters.projects }}
+        arguments: '--configuration ${{ parameters.configuration }} --output $(Build.ArtifactStagingDirectory)/${{ parameters.artifactName }}'
+        zipAfterPublish: true
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Upload ${{ parameters.artifactName }}'
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)/${{ parameters.artifactName }}'
+        artifactName: ${{ parameters.artifactName }}

@@ -11,7 +11,6 @@ import json
 import os
 import sys
 import time
-from pprint import pprint
 
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient

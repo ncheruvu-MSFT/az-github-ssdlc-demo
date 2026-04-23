@@ -1,0 +1,107 @@
+# ==============================================================================
+# Reusable Template — Python Build + Test
+# Usage:
+#   - template: templates/python-build.yml
+#     parameters:
+#       sourceDir: 'src/PythonApi'
+#       requirementsFile: 'requirements.txt'
+# ==============================================================================
+
+parameters:
+  - name: pythonVersion
+    type: string
+    default: '3.12'
+  - name: sourceDir
+    type: string
+    default: 'src/PythonApi'
+  - name: testDir
+    type: string
+    default: 'tests/PythonApi.Tests'
+  - name: requirementsFile
+    type: string
+    default: 'requirements.txt'
+  - name: requirementsDevFile
+    type: string
+    default: 'requirements-dev.txt'
+  - name: runLint
+    type: boolean
+    default: true
+  - name: publishArtifact
+    type: boolean
+    default: false
+  - name: artifactName
+    type: string
+    default: 'python-build'
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: 'Setup Python ${{ parameters.pythonVersion }}'
+    inputs:
+      versionSpec: ${{ parameters.pythonVersion }}
+      addToPath: true
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r ${{ parameters.sourceDir }}/${{ parameters.requirementsFile }}
+    displayName: 'Install dependencies'
+
+  - script: |
+      pip install -r ${{ parameters.sourceDir }}/${{ parameters.requirementsDevFile }}
+    displayName: 'Install dev dependencies'
+    condition: and(succeeded(), ne('${{ parameters.requirementsDevFile }}', ''))
+    continueOnError: true
+
+  - ${{ if eq(parameters.runLint, true) }}:
+    - script: |
+        pip install ruff
+        ruff check ${{ parameters.sourceDir }}/ --output-format=github
+      displayName: 'Ruff linting'
+      continueOnError: true
+
+    - script: |
+        pip install bandit
+        bandit -r ${{ parameters.sourceDir }}/ -f json -o $(Build.ArtifactStagingDirectory)/bandit-results.json || true
+        bandit -r ${{ parameters.sourceDir }}/ -f screen
+      displayName: 'Bandit SAST scan'
+      continueOnError: true
+
+    - script: |
+        pip install safety
+        safety check -r ${{ parameters.sourceDir }}/${{ parameters.requirementsFile }} --output json > $(Build.ArtifactStagingDirectory)/safety-results.json || true
+        safety check -r ${{ parameters.sourceDir }}/${{ parameters.requirementsFile }}
+      displayName: 'Safety SCA scan'
+      continueOnError: true
+
+  - script: |
+      pip install pytest pytest-cov pytest-asyncio httpx
+      python -m pytest ${{ parameters.testDir }}/ \
+        --tb=short \
+        --junitxml=$(Build.ArtifactStagingDirectory)/python-test-results.xml \
+        --cov=${{ parameters.sourceDir }} \
+        --cov-report=xml:$(Build.ArtifactStagingDirectory)/python-coverage.xml \
+        --cov-report=term-missing \
+        -v
+    displayName: 'Run Python tests'
+    continueOnError: false
+
+  - task: PublishTestResults@2
+    displayName: 'Publish Python test results'
+    condition: always()
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: '**/python-test-results.xml'
+      searchFolder: '$(Build.ArtifactStagingDirectory)'
+      testRunTitle: 'Python Tests'
+
+  - task: PublishCodeCoverageResults@2
+    displayName: 'Publish Python coverage'
+    condition: always()
+    inputs:
+      summaryFileLocation: '$(Build.ArtifactStagingDirectory)/python-coverage.xml'
+
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+    - task: PublishPipelineArtifact@1
+      displayName: 'Upload ${{ parameters.artifactName }}'
+      inputs:
+        targetPath: ${{ parameters.sourceDir }}
+        artifactName: ${{ parameters.artifactName }}

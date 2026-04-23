@@ -1,0 +1,320 @@
+# ==============================================================================
+# P2: AI Agent Ops — Create, Evaluate, Red Team, Deploy
+# ADO equivalent of: .github/workflows/ai-agent-ops.yml
+# ==============================================================================
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/AIAgent/**
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/AIAgent/**
+
+schedules:
+  - cron: '0 2 * * 1'                  # Weekly Monday 2 AM UTC (red team)
+    displayName: 'Weekly Red Team Run'
+    branches:
+      include:
+        - main
+    always: true
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: ssdlc-shared
+  - name: PYTHON_VERSION
+    value: '3.11'
+
+stages:
+  # ── Build & Validate ──────────────────────────────────────────
+  - stage: Build
+    displayName: 'Build & Validate'
+    jobs:
+      - job: ValidateAgent
+        displayName: 'Lint, Compile, Test'
+        steps:
+          - task: UsePythonVersion@0
+            displayName: 'Setup Python $(PYTHON_VERSION)'
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r src/AIAgent/requirements.txt
+              pip install -r src/AIAgent/requirements-dev.txt
+            displayName: 'Install dependencies'
+
+          - script: |
+              echo "Validating all Python files..."
+              for f in src/AIAgent/*.py; do
+                python -m py_compile "$f" && echo "  ✓ $f" || echo "  ✗ $f"
+              done
+              echo "Compilation check complete"
+            displayName: 'Validate Python syntax'
+
+          - script: |
+              python src/AIAgent/checkimports.py
+            displayName: 'Check module imports'
+
+          - script: |
+              pip install pytest
+              python -m pytest tests/AIAgent.Tests/ \
+                --tb=short \
+                --junitxml=$(Build.ArtifactStagingDirectory)/ai-agent-tests.xml \
+                -v || true
+            displayName: 'Run unit tests'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish AI Agent test results'
+            condition: always()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/ai-agent-tests.xml'
+              searchFolder: '$(Build.ArtifactStagingDirectory)'
+              testRunTitle: 'AI Agent Tests'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload agent scripts'
+            inputs:
+              targetPath: 'src/AIAgent'
+              artifactName: 'agent-scripts'
+
+  # ── DEV — Create & Test Agent ─────────────────────────────────
+  - stage: DeployDev
+    displayName: 'Deploy Agent → Dev'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: CreateAgentDev
+        displayName: 'Create Agent in Dev'
+        environment: 'dev'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: agent-scripts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/agent-scripts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Create Agent in Dev'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python create_agent.py
+
+                - task: AzureCLI@2
+                  displayName: 'Test Agent in Dev'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python run_agent.py
+                  continueOnError: true
+
+  # ── Evaluate Agent Quality ────────────────────────────────────
+  - stage: Evaluate
+    displayName: 'Evaluate Agent Quality'
+    dependsOn: DeployDev
+    jobs:
+      - deployment: EvaluateAgent
+        displayName: 'Run Evaluation'
+        environment: 'staging'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: agent-scripts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/agent-scripts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Run Agent Evaluation'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      python agent_eval.py
+                  continueOnError: true
+                  timeoutInMinutes: 20
+
+  # ── Red Team Security Testing ─────────────────────────────────
+  - stage: RedTeam
+    displayName: 'Red Team Security'
+    dependsOn: Evaluate
+    jobs:
+      - deployment: RedTeamTest
+        displayName: 'Adversarial Testing'
+        environment: 'staging'
+        variables:
+          - group: ssdlc-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: agent-scripts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/agent-scripts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Red Team — Foundry SDK'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python red_team.py
+                  continueOnError: true
+                  timeoutInMinutes: 45
+
+                - task: AzureCLI@2
+                  displayName: 'Red Team — Classic Attacks'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python redteam_classic.py
+                  continueOnError: true
+                  timeoutInMinutes: 30
+
+                - task: AzureCLI@2
+                  displayName: 'E2E Agent Smoke Test'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python e2etest.py
+                  continueOnError: true
+                  timeoutInMinutes: 15
+
+                - task: AzureCLI@2
+                  displayName: 'Safety Gate Check'
+                  inputs:
+                    azureSubscription: 'azure-dev'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      python gate_logic.py safety
+                  continueOnError: true
+
+                - task: PublishPipelineArtifact@1
+                  displayName: 'Upload red team results'
+                  condition: always()
+                  inputs:
+                    targetPath: '$(Pipeline.Workspace)/agent-scripts/data_folder'
+                    artifactName: 'redteam-results'
+
+  # ── Verify Production Agent ───────────────────────────────────
+  - stage: VerifyProd
+    displayName: 'Verify Production Agent'
+    dependsOn: RedTeam
+    jobs:
+      - deployment: VerifyAgent
+        displayName: 'Production Verification'
+        environment: 'production'       # Requires 2 approvals
+        variables:
+          - group: ssdlc-prod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: agent-scripts
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: pip install -r $(Pipeline.Workspace)/agent-scripts/requirements.txt
+                  displayName: 'Install dependencies'
+
+                - task: AzureCLI@2
+                  displayName: 'Create/Update Production Agent'
+                  inputs:
+                    azureSubscription: 'azure-prod'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT_PROD)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python create_agent.py
+
+                - task: AzureCLI@2
+                  displayName: 'Production Smoke Test'
+                  inputs:
+                    azureSubscription: 'azure-prod'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      cd $(Pipeline.Workspace)/agent-scripts
+                      export FOUNDRY_PROJECT_ENDPOINT=$(FOUNDRY_PROJECT_ENDPOINT_PROD)
+                      export FOUNDRY_MODEL_NAME=$(FOUNDRY_MODEL_NAME)
+                      export AGENT_NAME=ssdlc-demo-agent
+                      python e2etest.py
+                  continueOnError: true
+                  timeoutInMinutes: 10

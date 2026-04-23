@@ -14,9 +14,9 @@ class TestObservability:
     """Tests for observability module."""
 
     def test_get_tracer_returns_tracer(self) -> None:
-        from observability import get_tracer
+        import observability
 
-        tracer = get_tracer()
+        tracer = observability.get_tracer()
         assert tracer is not None
 
     def test_setup_tracing_without_connection_string(
@@ -27,7 +27,7 @@ class TestObservability:
 
         # Reset initialization flag
         import observability
-        observability._initialized = False
+        observability._state["initialized"] = False
 
         # Should not raise
         observability.setup_tracing()
@@ -35,7 +35,7 @@ class TestObservability:
     def test_setup_tracing_idempotent(self) -> None:
         """Calling setup_tracing multiple times should not raise."""
         import observability
-        observability._initialized = False
+        observability._state["initialized"] = False
         observability.setup_tracing()
         observability.setup_tracing()  # Second call should be a no-op
 
@@ -44,8 +44,6 @@ class TestModuleStructure:
     """Tests that all expected modules exist and import cleanly."""
 
     def test_init_module_imports(self) -> None:
-        import importlib
-
         mod = importlib.import_module("__init__")
         assert mod is not None
 

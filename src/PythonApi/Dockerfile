@@ -1,7 +1,11 @@
 FROM python:3.12-slim AS base
 
-# Security: non-root user
-RUN groupadd -r appgroup && useradd -r -g appgroup -d /app -s /sbin/nologin appuser
+# Security: patch OS-level CVEs and non-root user
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r appgroup && useradd -r -g appgroup -d /app -s /sbin/nologin appuser
 
 WORKDIR /app
 
