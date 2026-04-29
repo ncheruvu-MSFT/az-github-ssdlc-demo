@@ -34,13 +34,14 @@ resource aiServices 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   location: location
   tags: tags
   kind: 'AIServices'
+  // #checkov:skip=CKV_AZURE_134: Public network access is required for GitHub Actions runners in dev/staging; disabled in prod
   sku: {
     name: environment == 'prod' ? 'S0' : 'S0'
   }
   properties: {
     customSubDomainName: aiServicesName
     publicNetworkAccess: environment == 'prod' ? 'Disabled' : 'Enabled'
-    disableLocalAuth: false
+    disableLocalAuth: true
     apiProperties: {}
   }
   identity: {
