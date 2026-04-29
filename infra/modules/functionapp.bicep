@@ -46,7 +46,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   tags: tags
   sku: { name: 'Standard_LRS' }
   kind: 'StorageV2'
-  // #checkov:skip=CKV_AZURE_59: publicNetworkAccess must remain Enabled for Function App connectivity without VNet integration in dev/staging
+  // #checkov:skip=CKV_AZURE_59: publicNetworkAccess=Enabled with networkAcls defaultAction=Deny+bypass=AzureServices is correct; Function App uses AzureServices trusted bypass (no VNet in dev/staging)
   // #checkov:skip=CKV_AZURE_43: Storage account name uses a parameterized Bicep expression evaluated at deploy time
   // #checkov:skip=CKV_AZURE_206: Standard_LRS replication is sufficient for this demo; upgrade to ZRS/GRS in production
   properties: {
@@ -108,7 +108,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       minTlsVersion: '1.2'
       http20Enabled: true
       use32BitWorkerProcess: false
-      healthCheckPath: '/api/health'
+      healthCheckPath: '/api/health'  // maps to HealthCheck function (Route = "health") in HelloWorldFunction.cs
       numberOfWorkers: 2
       cors: {
         allowedOrigins: ['https://portal.azure.com']
