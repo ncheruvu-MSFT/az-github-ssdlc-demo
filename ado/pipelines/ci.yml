@@ -45,9 +45,11 @@ stages:
               projects: |
                 src/FunctionApp/HelloWorld.Functions.csproj
                 src/ContainerApp/HelloWorld.ContainerApp.csproj
+                src/WebApp/SsdlcDemo.WebApp.csproj
               testProjects: |
                 tests/FunctionApp.Tests/HelloWorld.Functions.Tests.csproj
                 tests/ContainerApp.Tests/HelloWorld.ContainerApp.Tests.csproj
+                tests/WebApp.Tests/SsdlcDemo.WebApp.Tests.csproj
               configuration: $(buildConfiguration)
               publishArtifact: true
               artifactName: 'dotnet-artifacts'
@@ -105,8 +107,9 @@ stages:
 
           - script: |
               echo "Building container images for scanning..."
-              docker build -t ssdlc-containerapp:scan -f src/ContainerApp/Dockerfile .
-              docker build -t ssdlc-pythonapi:scan -f src/PythonApi/Dockerfile .
+              docker build -t ssdlc-containerapp:scan -f src/ContainerApp/Dockerfile src/ContainerApp
+              docker build -t ssdlc-pythonapi:scan -f src/PythonApi/Dockerfile src/PythonApi
+              docker build -t ssdlc-webapp:scan -f src/WebApp/Dockerfile src/WebApp
             displayName: 'Build container images'
 
           - script: |
@@ -116,6 +119,8 @@ stages:
               trivy image --format sarif --output $(Build.ArtifactStagingDirectory)/containerapp-trivy.sarif ssdlc-containerapp:scan
               echo "Scanning PythonApi image..."
               trivy image --format sarif --output $(Build.ArtifactStagingDirectory)/pythonapi-trivy.sarif ssdlc-pythonapi:scan
+              echo "Scanning WebApp image..."
+              trivy image --format sarif --output $(Build.ArtifactStagingDirectory)/webapp-trivy.sarif ssdlc-webapp:scan
               echo "Container scan complete"
             displayName: 'Trivy container scan'
             continueOnError: true

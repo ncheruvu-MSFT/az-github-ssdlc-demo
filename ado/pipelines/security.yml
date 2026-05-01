@@ -104,6 +104,7 @@ stages:
               echo "Checking .NET vulnerable packages..."
               dotnet list src/FunctionApp/HelloWorld.Functions.csproj package --vulnerable --include-transitive
               dotnet list src/ContainerApp/HelloWorld.ContainerApp.csproj package --vulnerable --include-transitive
+              dotnet list src/WebApp/SsdlcDemo.WebApp.csproj package --vulnerable --include-transitive
               echo ".NET SCA check complete"
             displayName: '.NET vulnerable package audit'
             continueOnError: true
@@ -139,8 +140,9 @@ stages:
         displayName: 'Trivy + MSDO Container Scan'
         steps:
           - script: |
-              docker build -t ssdlc-containerapp:scan -f src/ContainerApp/Dockerfile .
-              docker build -t ssdlc-pythonapi:scan -f src/PythonApi/Dockerfile .
+              docker build -t ssdlc-containerapp:scan -f src/ContainerApp/Dockerfile src/ContainerApp
+              docker build -t ssdlc-pythonapi:scan -f src/PythonApi/Dockerfile src/PythonApi
+              docker build -t ssdlc-webapp:scan -f src/WebApp/Dockerfile src/WebApp
             displayName: 'Build container images'
 
           - task: MicrosoftSecurityDevOps@1

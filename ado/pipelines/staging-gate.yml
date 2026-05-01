@@ -23,6 +23,10 @@ variables:
     value: 'https://dev.azure.com/$(System.CollectionUri)'
   - name: ADO_PROJECT
     value: '$(System.TeamProject)'
+  - name: CI_PIPELINE_ID
+    value: ''           # Set to your CI pipeline ID (Pipelines → CI → URL contains definitionId)
+  - name: SECURITY_PIPELINE_ID
+    value: ''           # Set to your Security pipeline ID
 
 stages:
   - stage: StagingGate

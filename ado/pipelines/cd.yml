@@ -25,6 +25,8 @@ variables:
     value: '$(ACR_NAME).azurecr.io/ssdlc-containerapp:$(Build.SourceVersion)'
   - name: pythonApiImage
     value: '$(ACR_NAME).azurecr.io/ssdlc-pythonapi:$(Build.SourceVersion)'
+  - name: webAppImage
+    value: '$(ACR_NAME).azurecr.io/ssdlc-webapp:$(Build.SourceVersion)'
 
 stages:
   # ── Build & Push Container Images ─────────────────────────────
@@ -78,6 +80,16 @@ stages:
               imageName: 'ssdlc-pythonapi'
               signImage: true
 
+          # WebApp image
+          - template: templates/container-build.yml
+            parameters:
+              serviceConnection: 'azure-dev'
+              acrName: $(ACR_NAME)
+              dockerfilePath: 'src/WebApp/Dockerfile'
+              buildContext: 'src/WebApp'
+              imageName: 'ssdlc-webapp'
+              signImage: true
+
   # ── DEV Deployment ────────────────────────────────────────────
   - stage: DeployDev
     displayName: 'Deploy → Dev'
@@ -101,6 +113,7 @@ stages:
                     environment: 'dev'
                     containerAppImage: $(containerAppImage)
                     pythonApiImage: $(pythonApiImage)
+                    webAppImage: $(webAppImage)
                     functionAppArtifact: '$(Pipeline.Workspace)/functionapp/**/*.zip'
 
                 - template: templates/health-check.yml
@@ -139,7 +152,7 @@ stages:
                       "version": "1.0",
                       "trustPolicies": [{
                         "name": "ssdlc-verify",
-                        "registryScopes": ["$(ACR_NAME).azurecr.io/ssdlc-containerapp", "$(ACR_NAME).azurecr.io/ssdlc-pythonapi"],
+                        "registryScopes": ["$(ACR_NAME).azurecr.io/ssdlc-containerapp", "$(ACR_NAME).azurecr.io/ssdlc-pythonapi", "$(ACR_NAME).azurecr.io/ssdlc-webapp"],
                         "signatureVerification": { "level": "strict" },
                         "trustStores": ["ca:ssdlc-demo-signing"],
                         "trustedIdentities": ["*"]
@@ -149,6 +162,7 @@ stages:
                     notation policy import /tmp/trustpolicy.json
                     notation verify "$(containerAppImage)" && echo "ContainerApp: verified ✓"
                     notation verify "$(pythonApiImage)" && echo "PythonApi: verified ✓"
+                    notation verify "$(webAppImage)" && echo "WebApp: verified ✓"
                   displayName: 'Verify image signatures'
                   continueOnError: true
 
@@ -159,6 +173,7 @@ stages:
                     bicepParamFile: 'infra/main.staging.bicepparam'
                     containerAppImage: $(containerAppImage)
                     pythonApiImage: $(pythonApiImage)
+                    webAppImage: $(webAppImage)
                     functionAppArtifact: '$(Pipeline.Workspace)/functionapp/**/*.zip'
 
                 - template: templates/health-check.yml
@@ -194,7 +209,7 @@ stages:
                       "version": "1.0",
                       "trustPolicies": [{
                         "name": "ssdlc-verify",
-                        "registryScopes": ["$(ACR_NAME).azurecr.io/ssdlc-containerapp", "$(ACR_NAME).azurecr.io/ssdlc-pythonapi"],
+                        "registryScopes": ["$(ACR_NAME).azurecr.io/ssdlc-containerapp", "$(ACR_NAME).azurecr.io/ssdlc-pythonapi", "$(ACR_NAME).azurecr.io/ssdlc-webapp"],
                         "signatureVerification": { "level": "strict" },
                         "trustStores": ["ca:ssdlc-demo-signing"],
                         "trustedIdentities": ["*"]
@@ -204,7 +219,8 @@ stages:
                     notation policy import /tmp/trustpolicy.json
                     notation verify "$(containerAppImage)" || exit 1
                     notation verify "$(pythonApiImage)" || exit 1
-                    echo "Both images verified for production ✓"
+                    notation verify "$(webAppImage)" || exit 1
+                    echo "All images verified for production ✓"
                   displayName: 'MANDATORY: Verify image signatures'
 
                 - template: templates/azure-deploy.yml
@@ -214,6 +230,7 @@ stages:
                     bicepParamFile: 'infra/main.prod.bicepparam'
                     containerAppImage: $(containerAppImage)
                     pythonApiImage: $(pythonApiImage)
+                    webAppImage: $(webAppImage)
                     functionAppArtifact: '$(Pipeline.Workspace)/functionapp/**/*.zip'
 
                 - template: templates/health-check.yml

@@ -27,6 +27,9 @@ parameters:
   - name: pythonApiImage
     type: string
     default: ''
+  - name: webAppImage
+    type: string
+    default: ''
   - name: functionAppArtifact
     type: string
     default: ''
@@ -52,7 +55,8 @@ steps:
           --template-file "${{ parameters.bicepFile }}" \
           --parameters "$PARAM_FILE" \
           --parameters containerAppImage='${{ parameters.containerAppImage }}' \
-                       pythonApiImage='${{ parameters.pythonApiImage }}'
+                       pythonApiImage='${{ parameters.pythonApiImage }}' \
+                       webAppImage='${{ parameters.webAppImage }}'
 
         echo "Infrastructure deployed ✓"
 
@@ -89,3 +93,10 @@ steps:
             --resource-group "$RG" \
             --image "${{ parameters.pythonApiImage }}" \
             2>/dev/null || echo "PythonApi update skipped (may not exist yet)"
+
+          echo "Updating WebApp image..."
+          az containerapp update \
+            --name ca-webapp-${{ parameters.environment }} \
+            --resource-group "$RG" \
+            --image "${{ parameters.webAppImage }}" \
+            2>/dev/null || echo "WebApp update skipped (may not exist yet)"
