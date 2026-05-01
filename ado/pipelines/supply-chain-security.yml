@@ -251,7 +251,7 @@ stages:
           - task: AzureCLI@2
             displayName: 'Login to ACR & push'
             inputs:
-              azureSubscription: 'azure-dev'
+              azureSubscription: 'ncheruvudevops'
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |

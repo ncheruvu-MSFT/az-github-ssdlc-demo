@@ -157,6 +157,7 @@ jobs:
           dotnet restore SsdlcDemo.sln
           dotnet list src/FunctionApp/HelloWorld.Functions.csproj package --vulnerable --include-transitive
           dotnet list src/ContainerApp/HelloWorld.ContainerApp.csproj package --vulnerable --include-transitive
+          dotnet list src/WebApp/SsdlcDemo.WebApp.csproj package --vulnerable --include-transitive
 
       # ── Python SAST with Bandit ──
       - name: Install Python security tools
@@ -181,7 +182,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: csharp, python
+          languages: csharp, python, javascript
 
       - name: Build for CodeQL
         run: dotnet build SsdlcDemo.sln --configuration Release
@@ -189,7 +190,7 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:csharp,/language:python"
+          category: "/language:csharp,/language:python,/language:javascript"
 
   # ── Container Image Scanning ───────────────────────────────────
   container-scan:
@@ -209,6 +210,9 @@ jobs:
           - name: pythonapi
             context: src/PythonApi
             dockerfile: src/PythonApi/Dockerfile
+          - name: webapp
+            context: src/WebApp
+            dockerfile: src/WebApp/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4

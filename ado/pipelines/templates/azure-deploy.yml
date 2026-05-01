@@ -4,7 +4,7 @@
 #   - template: templates/azure-deploy.yml
 #     parameters:
 #       environment: 'dev'
-#       serviceConnection: 'azure-dev'
+#       serviceConnection: 'ncheruvudevops'
 # ==============================================================================
 
 parameters:

@@ -63,7 +63,7 @@ stages:
           # ContainerApp image
           - template: templates/container-build.yml
             parameters:
-              serviceConnection: 'azure-dev'
+              serviceConnection: 'ncheruvudevops'
               acrName: $(ACR_NAME)
               dockerfilePath: 'src/ContainerApp/Dockerfile'
               buildContext: 'src/ContainerApp'
@@ -73,7 +73,7 @@ stages:
           # PythonApi image
           - template: templates/container-build.yml
             parameters:
-              serviceConnection: 'azure-dev'
+              serviceConnection: 'ncheruvudevops'
               acrName: $(ACR_NAME)
               dockerfilePath: 'src/PythonApi/Dockerfile'
               buildContext: 'src/PythonApi'
@@ -83,7 +83,7 @@ stages:
           # WebApp image
           - template: templates/container-build.yml
             parameters:
-              serviceConnection: 'azure-dev'
+              serviceConnection: 'ncheruvudevops'
               acrName: $(ACR_NAME)
               dockerfilePath: 'src/WebApp/Dockerfile'
               buildContext: 'src/WebApp'
@@ -109,7 +109,7 @@ stages:
 
                 - template: templates/azure-deploy.yml
                   parameters:
-                    serviceConnection: 'azure-dev'
+                    serviceConnection: 'ncheruvudevops'
                     environment: 'dev'
                     containerAppImage: $(containerAppImage)
                     pythonApiImage: $(pythonApiImage)
@@ -168,7 +168,7 @@ stages:
 
                 - template: templates/azure-deploy.yml
                   parameters:
-                    serviceConnection: 'azure-dev'
+                    serviceConnection: 'ncheruvudevops'
                     environment: 'staging'
                     bicepParamFile: 'infra/main.staging.bicepparam'
                     containerAppImage: $(containerAppImage)
@@ -225,7 +225,7 @@ stages:
 
                 - template: templates/azure-deploy.yml
                   parameters:
-                    serviceConnection: 'azure-prod'
+                    serviceConnection: 'ncheruvudevops'
                     environment: 'prod'
                     bicepParamFile: 'infra/main.prod.bicepparam'
                     containerAppImage: $(containerAppImage)

@@ -56,34 +56,16 @@ stages:
               categories: 'code'
               tools: 'bandit'
 
-          # GHAzDO CodeQL — if enabled at org/project level, this is automatic.
-          # For manual CodeQL, use the AdvancedSecurity tasks:
-          - task: AdvancedSecurity-Codeql-Init@1
-            displayName: 'CodeQL Initialize'
-            inputs:
-              languages: 'csharp,python'
-              querysuite: 'security-and-quality'
-            condition: "ne(variables['System.PullRequest.IsFork'], 'True')"
-            continueOnError: true
+          # GHAzDO CodeQL — requires GitHub Advanced Security for Azure DevOps license.
+          # Enable in Project Settings → Repos → Advanced Security to activate.
+          # When enabled, CodeQL SAST runs automatically on PR/push.
 
           - task: DotNetCoreCLI@2
-            displayName: 'Build .NET (for CodeQL)'
+            displayName: 'Build .NET (security analysis)'
             inputs:
               command: 'build'
               projects: 'SsdlcDemo.sln'
               arguments: '--configuration Release'
-            continueOnError: true
-
-          - task: AdvancedSecurity-Codeql-Autobuild@1
-            displayName: 'CodeQL Autobuild (Python)'
-            continueOnError: true
-
-          - task: AdvancedSecurity-Codeql-Analyze@1
-            displayName: 'CodeQL Analyze'
-            continueOnError: true
-
-          - task: AdvancedSecurity-Publish@1
-            displayName: 'Publish to Advanced Security tab'
             continueOnError: true
 
   # ── SCA — Software Composition Analysis ────────────────────────
@@ -124,12 +106,8 @@ stages:
             displayName: 'Python dependency scan'
             continueOnError: true
 
-          # GHAzDO Dependency Scanning runs automatically if enabled.
+          # GHAzDO Dependency Scanning — enable in Project Settings → Repos → Advanced Security.
           # Alerts appear in Repos → Advanced Security → Dependencies.
-
-          - task: AdvancedSecurity-Dependency-Scanning@1
-            displayName: 'GHAzDO Dependency Scanning'
-            continueOnError: true
 
   # ── Container Scanning ─────────────────────────────────────────
   - stage: ContainerSecurity

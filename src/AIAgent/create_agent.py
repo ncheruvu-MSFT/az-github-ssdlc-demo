@@ -25,6 +25,11 @@ def create_agent() -> dict[str, str]:
     setup_tracing()
 
     endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
+    if not endpoint.startswith("https://"):
+        raise ValueError(
+            "FOUNDRY_PROJECT_ENDPOINT must use HTTPS. "
+            f"Got: {endpoint[:20]}..."
+        )
     agent_name = os.environ.get("AGENT_NAME", "ssdlc-demo-agent")
     model = os.environ.get("FOUNDRY_MODEL_NAME", "gpt-4o")
 

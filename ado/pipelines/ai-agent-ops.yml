@@ -118,7 +118,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Create Agent in Dev'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -131,7 +131,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Test Agent in Dev'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -169,7 +169,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Run Agent Evaluation'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -207,7 +207,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Red Team — Foundry SDK'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -222,7 +222,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Red Team — Classic Attacks'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -237,7 +237,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'E2E Agent Smoke Test'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -252,7 +252,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Safety Gate Check'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -294,7 +294,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Create/Update Production Agent'
                   inputs:
-                    azureSubscription: 'azure-prod'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -307,7 +307,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Production Smoke Test'
                   inputs:
-                    azureSubscription: 'azure-prod'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |

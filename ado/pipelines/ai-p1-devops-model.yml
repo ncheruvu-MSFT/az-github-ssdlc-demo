@@ -112,7 +112,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Run prompt regression eval'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -156,7 +156,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Content safety validation'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -233,7 +233,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Create/Update Agent'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -246,7 +246,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'E2E Smoke Test'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |

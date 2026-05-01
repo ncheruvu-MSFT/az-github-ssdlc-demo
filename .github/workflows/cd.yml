@@ -87,6 +87,13 @@ jobs:
           push: true
           tags: ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
 
+      - name: Build & push WebApp
+        uses: docker/build-push-action@v6
+        with:
+          context: src/WebApp
+          push: true
+          tags: ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
+
       # ── Container Image Signing with Notation (Notary v2) ──
       - name: Install Notation CLI
         uses: notaryproject/notation-action/setup@v1
@@ -112,6 +119,13 @@ jobs:
             --key "ssdlc-demo-signing-key"
           echo "✅ Python API image signed"
 
+      - name: Sign WebApp image
+        run: |
+          notation sign \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }} \
+            --key "ssdlc-demo-signing-key"
+          echo "✅ WebApp image signed"
+
       - name: Export trust policy for verification
         run: |
           # Create trust policy for downstream verification
@@ -132,6 +146,15 @@ jobs:
               {
                 "name": "ssdlc-pythonapi",
                 "registryScopes": [ "${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi" ],
+                "signatureVerification": {
+                  "level": "strict"
+                },
+                "trustStores": [ "ca:ssdlc-demo-signing-key" ],
+                "trustedIdentities": [ "*" ]
+              },
+              {
+                "name": "ssdlc-webapp",
+                "registryScopes": [ "${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp" ],
                 "signatureVerification": {
                   "level": "strict"
                 },
@@ -202,6 +225,12 @@ jobs:
             ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           echo "✅ Python API image signature verified"
 
+      - name: Verify WebApp image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
+          echo "✅ WebApp image signature verified"
+
       # Deploy Infrastructure
       - name: Deploy Bicep (dev)
         uses: azure/arm-deploy@v2
@@ -213,6 +242,7 @@ jobs:
             infra/main.dev.bicepparam
             containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
             pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+            webAppImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
             acrName=${{ env.ACR_NAME }}
           deploymentName: "deploy-dev-${{ github.run_number }}"
 
@@ -243,6 +273,13 @@ jobs:
             --name ca-pyapi-ssdlcdemo-dev \
             --resource-group rg-ssdlcdemo-dev \
             --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+      - name: Update WebApp image
+        run: |
+          az containerapp update \
+            --name ca-webapp-ssdlcdemo-dev \
+            --resource-group rg-ssdlcdemo-dev \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
 
       # Smoke test
       - name: Smoke test (dev)
@@ -306,6 +343,12 @@ jobs:
             ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           echo "✅ Python API image signature verified"
 
+      - name: Verify WebApp image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
+          echo "✅ WebApp image signature verified"
+
       - name: Deploy Bicep (staging)
         uses: azure/arm-deploy@v2
         with:
@@ -316,6 +359,7 @@ jobs:
             infra/main.staging.bicepparam
             containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
             pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+            webAppImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
             acrName=${{ env.ACR_NAME }}
           deploymentName: "deploy-staging-${{ github.run_number }}"
 
@@ -344,6 +388,13 @@ jobs:
             --name ca-pyapi-ssdlcdemo-staging \
             --resource-group rg-ssdlcdemo-staging \
             --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+      - name: Update WebApp image
+        run: |
+          az containerapp update \
+            --name ca-webapp-ssdlcdemo-staging \
+            --resource-group rg-ssdlcdemo-staging \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
 
       - name: Smoke test (staging)
         run: |
@@ -406,6 +457,12 @@ jobs:
             ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
           echo "✅ Python API image signature verified — PRODUCTION"
 
+      - name: Verify WebApp image signature
+        run: |
+          notation verify \
+            ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
+          echo "✅ WebApp image signature verified — PRODUCTION"
+
       - name: Deploy Bicep (prod)
         uses: azure/arm-deploy@v2
         with:
@@ -416,6 +473,7 @@ jobs:
             infra/main.prod.bicepparam
             containerImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/containerapp:${{ github.sha }}
             pythonApiImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+            webAppImage=${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
             acrName=${{ env.ACR_NAME }}
           deploymentName: "deploy-prod-${{ github.run_number }}"
 
@@ -444,6 +502,13 @@ jobs:
             --name ca-pyapi-ssdlcdemo-prod \
             --resource-group rg-ssdlcdemo-prod \
             --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/pythonapi:${{ github.sha }}
+
+      - name: Update WebApp image
+        run: |
+          az containerapp update \
+            --name ca-webapp-ssdlcdemo-prod \
+            --resource-group rg-ssdlcdemo-prod \
+            --image ${{ env.ACR_NAME }}.azurecr.io/ssdlcdemo/webapp:${{ github.sha }}
 
       - name: Smoke test (prod)
         run: |

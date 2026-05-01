@@ -125,7 +125,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'E2E tool correctness test'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -139,7 +139,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Tool call accuracy eval'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -183,7 +183,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Prompt injection via tool output'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -198,7 +198,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Tool permission boundary test'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -273,7 +273,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'Bind MCP endpoints to agent'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
@@ -286,7 +286,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'E2E smoke test with tool calls'
                   inputs:
-                    azureSubscription: 'azure-dev'
+                    azureSubscription: 'ncheruvudevops'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |

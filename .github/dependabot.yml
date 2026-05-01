@@ -193,3 +193,131 @@ updates:
       - "security"
     commit-message:
       prefix: "deps(docker)"
+
+  # ── Python AI Agent ─────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/src/AIAgent"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+      - "ai-agent"
+      - "security"
+    commit-message:
+      prefix: "deps(ai-agent)"
+      include: "scope"
+    groups:
+      azure-ai:
+        patterns:
+          - "azure-ai-*"
+          - "azure-identity"
+          - "azure-core"
+        update-types:
+          - "minor"
+          - "patch"
+      opentelemetry:
+        patterns:
+          - "opentelemetry-*"
+        update-types:
+          - "minor"
+          - "patch"
+      security-patches:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ── .NET WebApp ─────────────────────────────────────────────
+  - package-ecosystem: "nuget"
+    directory: "/src/WebApp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "dotnet"
+      - "security"
+    commit-message:
+      prefix: "deps(nuget)"
+      include: "scope"
+    groups:
+      aspnetcore:
+        patterns:
+          - "Microsoft.AspNetCore.*"
+          - "Swashbuckle.*"
+        update-types:
+          - "minor"
+          - "patch"
+      security-patches:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ── Angular WebApp (npm) ────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/src/WebApp/ClientApp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "security"
+    commit-message:
+      prefix: "deps(npm)"
+      include: "scope"
+    groups:
+      angular:
+        patterns:
+          - "@angular/*"
+        update-types:
+          - "minor"
+          - "patch"
+      security-patches:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ── Docker — WebApp ────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/src/WebApp"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+    commit-message:
+      prefix: "deps(docker)"
+
+  # ── WebApp Tests ────────────────────────────────────────────
+  - package-ecosystem: "nuget"
+    directory: "/tests/WebApp.Tests"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "dotnet"
+      - "testing"
+    commit-message:
+      prefix: "deps(test)"
+    groups:
+      test-packages:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
