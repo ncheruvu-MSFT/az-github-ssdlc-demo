@@ -1,0 +1,208 @@
+<mxfile host="app.diagrams.net" modified="2026-05-12T00:00:00.000Z" agent="copilot" version="24.0.0" type="device">
+  <diagram id="runner-architecture" name="GitHub Actions Runner Architecture">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="GitHub Actions Runner Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="350" y="10" width="500" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- GitHub Repository Box -->
+        <mxCell id="gh-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=0;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="30" y="70" width="540" height="360" as="geometry"/>
+        </mxCell>
+        <mxCell id="gh-label" value="&lt;b&gt;GitHub (Enterprise)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=14;fontColor=#24292f;" vertex="1" parent="1">
+          <mxGeometry x="40" y="75" width="200" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- GitHub Actions -->
+        <mxCell id="gha-icon" value="&lt;b&gt;GitHub Actions&lt;/b&gt;&lt;br&gt;Workflow Engine" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png;fillColor=#24292f;rounded=1;arcSize=12;strokeColor=#24292f;fontColor=#24292f;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="120" width="50" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- Scenario 1: Larger Hosted Runners -->
+        <mxCell id="s1-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="110" width="400" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1-title" value="&lt;b&gt;Scenario 1: GitHub-Hosted Larger Runners&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=12;fontColor=#1a3a5c;" vertex="1" parent="1">
+          <mxGeometry x="150" y="115" width="350" height="25" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s1-ubuntu" value="&lt;b&gt;ubuntu-latest&lt;/b&gt;&lt;br&gt;2 vCPU / 7 GB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="155" y="148" width="115" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1-4core" value="&lt;b&gt;4-core runner&lt;/b&gt;&lt;br&gt;4 vCPU / 16 GB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="280" y="148" width="115" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1-8core" value="&lt;b&gt;8/16-core runner&lt;/b&gt;&lt;br&gt;8-16 vCPU / 32-64 GB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="405" y="148" width="125" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s1-features" value="✅ Zero management&amp;nbsp;&amp;nbsp;&amp;nbsp;✅ Auto-scales&amp;nbsp;&amp;nbsp;&amp;nbsp;✅ Optional VNET injection&lt;br&gt;✅ Linux / Windows / macOS&amp;nbsp;&amp;nbsp;&amp;nbsp;✅ GPU runners available" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="155" y="200" width="380" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- Scenario 2: Self-Hosted ACI Runners -->
+        <mxCell id="s2-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="260" width="400" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2-title" value="&lt;b&gt;Scenario 2: Self-Hosted Runners on Azure ACI&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=12;fontColor=#2d5a1e;" vertex="1" parent="1">
+          <mxGeometry x="150" y="265" width="380" height="25" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s2-custom-ubuntu" value="&lt;b&gt;Custom Ubuntu 22.04&lt;/b&gt;&lt;br&gt;.NET 8 | Python 3.12&lt;br&gt;Node 20 | Azure CLI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="155" y="298" width="130" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2-custom-windows" value="&lt;b&gt;Custom Windows 2022&lt;/b&gt;&lt;br&gt;.NET 8 | Node 20&lt;br&gt;Azure CLI | Git" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="300" y="298" width="130" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s2-features" value="✅ Full image control&amp;nbsp;&amp;nbsp;&amp;nbsp;✅ Azure VNET native&amp;nbsp;&amp;nbsp;&amp;nbsp;✅ Non-root containers&lt;br&gt;✅ Pre-installed tools&amp;nbsp;&amp;nbsp;&amp;nbsp;✅ OIDC auth to Azure&amp;nbsp;&amp;nbsp;&amp;nbsp;✅ Cost-effective" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="155" y="365" width="380" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s2-labels" value="&lt;font color=&quot;#666666&quot;&gt;Labels: &lt;/font&gt;&lt;code&gt;self-hosted, aci, linux&lt;/code&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="445" y="310" width="90" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- Azure Box -->
+        <mxCell id="az-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=0;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="620" y="70" width="460" height="360" as="geometry"/>
+        </mxCell>
+        <mxCell id="az-label" value="&lt;b&gt;Azure Subscription&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=14;fontColor=#7a6000;" vertex="1" parent="1">
+          <mxGeometry x="630" y="75" width="200" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- ACR -->
+        <mxCell id="acr-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="110" width="200" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="acr-title" value="&lt;b&gt;Azure Container Registry&lt;/b&gt;&lt;br&gt;acrssdlcdemo.azurecr.io" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontColor=#7a6000;" vertex="1" parent="1">
+          <mxGeometry x="645" y="115" width="190" height="35" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="acr-ubuntu" value="github-runner-ubuntu:latest" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="660" y="158" width="165" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="acr-windows" value="github-runner-windows:latest" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="660" y="190" width="165" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="acr-tag" value="Tagged: &lt;code&gt;commit SHA&lt;/code&gt; + &lt;code&gt;latest&lt;/code&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=8;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="660" y="218" width="165" height="15" as="geometry"/>
+        </mxCell>
+
+        <!-- ACI -->
+        <mxCell id="aci-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="860" y="110" width="200" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="aci-title" value="&lt;b&gt;Azure Container Instances&lt;/b&gt;&lt;br&gt;rg-ssdlc-runners-dev" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontColor=#7a6000;" vertex="1" parent="1">
+          <mxGeometry x="865" y="115" width="190" height="35" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="aci-runner1" value="&lt;b&gt;aci-runner-01&lt;/b&gt;&lt;br&gt;2 vCPU / 4 GB&lt;br&gt;Linux container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="880" y="158" width="160" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="aci-note" value="Registers as GitHub&lt;br&gt;self-hosted runner" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=8;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="880" y="213" width="160" height="20" as="geometry"/>
+        </mxCell>
+
+        <!-- Build Pipeline Box -->
+        <mxCell id="build-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="260" width="420" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="build-title" value="&lt;b&gt;Image Build Pipeline&lt;/b&gt;&amp;nbsp;(runner-build-images.yml)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontColor=#7a6000;" vertex="1" parent="1">
+          <mxGeometry x="650" y="265" width="400" height="25" as="geometry"/>
+        </mxCell>
+
+        <!-- Build steps -->
+        <mxCell id="step1" value="1. OIDC Login" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="300" width="85" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="step2" value="2. az acr build&lt;br&gt;(Ubuntu)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="760" y="300" width="85" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="step3" value="3. az acr build&lt;br&gt;(Windows)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="300" width="85" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="step4" value="4. Verify&lt;br&gt;Images" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="960" y="300" width="85" height="35" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrows between steps -->
+        <mxCell id="a-s1s2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#666666;" edge="1" source="step1" target="step2" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a-s2s3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#666666;" edge="1" source="step2" target="step3" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a-s3s4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#666666;" edge="1" source="step3" target="step4" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Dockerfile sources -->
+        <mxCell id="df-ubuntu" value="runners/ubuntu/&lt;br&gt;Dockerfile" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#f5f5f5;strokeColor=#666666;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="660" y="355" width="90" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="df-windows" value="runners/windows/&lt;br&gt;Dockerfile" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#f5f5f5;strokeColor=#666666;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="770" y="355" width="90" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="df-script" value="scripts/setup-aci-&lt;br&gt;github-runner.ps1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#f5f5f5;strokeColor=#666666;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="880" y="355" width="110" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Flow Arrows: GH → ACR -->
+        <mxCell id="arrow-gh-acr" value="&lt;font style=&quot;font-size: 9px;&quot;&gt;Push images&lt;br&gt;(az acr build)&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#d6b656;strokeWidth=2;fontColor=#7a6000;" edge="1" source="s2-box" target="acr-box" parent="1">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Flow Arrows: ACR → ACI -->
+        <mxCell id="arrow-acr-aci" value="&lt;font style=&quot;font-size: 9px;&quot;&gt;Pull image&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#82b366;strokeWidth=2;fontColor=#2d5a1e;" edge="1" source="acr-box" target="aci-box" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Flow Arrow: ACI → GitHub (register) -->
+        <mxCell id="arrow-aci-gh" value="&lt;font style=&quot;font-size: 9px;&quot;&gt;Register runner&lt;br&gt;(HTTPS)&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=1;entryX=1;entryY=1;strokeColor=#6c8ebf;strokeWidth=2;dashed=1;fontColor=#1a3a5c;" edge="1" source="aci-box" target="s2-box" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="860" y="450"/>
+              <mxPoint x="540" y="450"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#CCCCCC;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="30" y="460" width="1050" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b&gt;Workflows&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="465" width="70" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend1" value="runner-build-images.yml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="40" y="488" width="150" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend1d" value="Build Ubuntu/Windows runner images → ACR" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=8;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="195" y="488" width="220" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend2" value="runner-larger-hosted.yml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="420" y="488" width="150" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend2d" value="Test GitHub-hosted larger runners vs baseline" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=8;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="575" y="488" width="210" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend3" value="runner-aci-selfhosted.yml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="790" y="488" width="150" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend3d" value="Test ACI self-hosted runners" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=8;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="945" y="488" width="130" height="22" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

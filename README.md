@@ -83,6 +83,13 @@ az-github-ssdlc-demo/
 │   ├── CODEOWNERS                    # Required reviewers by path
 │   ├── PULL_REQUEST_TEMPLATE.md      # SSDLC checklist for PRs
 │   └── branch-protection.json        # Recommended branch rules
+├── runners/
+│   ├── ubuntu/                       # Custom Ubuntu runner image
+│   │   ├── Dockerfile                # Ubuntu 22.04 + .NET 8, Python 3.12, Node 20
+│   │   └── entrypoint.sh            # Auto-register/deregister runner
+│   └── windows/                      # Custom Windows runner image
+│       ├── Dockerfile                # Windows Server 2022 + .NET 8, Node 20
+│       └── entrypoint.ps1           # Auto-register/deregister runner
 ├── src/
 │   ├── FunctionApp/                  # C# Azure Functions (.NET 8 isolated)
 │   │   ├── Functions/
@@ -259,6 +266,104 @@ Developer
 | **Playwright** | E2E/UI testing | Multi-language |
 | **k6** | Load/performance testing | JavaScript |
 | **Azure Load Testing** | Cloud-based load testing | Azure service |
+
+---
+
+## Custom GitHub Actions Runners
+
+This repo includes two runner strategies for GitHub Actions — **GitHub-hosted larger runners** (managed by GitHub) and **self-hosted runners on Azure Container Instances** (managed by you). Both are production-ready with custom images built via ACR.
+
+> **Architecture diagram:** Open [`docs/runner-architecture.drawio`](docs/runner-architecture.drawio) in [draw.io](https://app.diagrams.net) or the VS Code draw.io extension.
+
+### Scenario Comparison
+
+| | Scenario 1: GitHub Larger Hosted | Scenario 2: ACI Self-Hosted |
+|---|---|---|
+| **Runner location** | GitHub cloud infrastructure | Azure Container Instances |
+| **Management** | Zero — GitHub manages everything | You manage image + ACI lifecycle |
+| **Custom image** | No — GitHub's standard images | Yes — full control (Dockerfile) |
+| **Network** | Optional VNET injection (Enterprise) | Runs inside your Azure VNET natively |
+| **Scaling** | Automatic | Manual or scripted |
+| **Cost model** | Per-minute billing (higher rate) | ACI billing (cheaper for long/heavy jobs) |
+| **Best for** | Fast CI, zero-ops teams | Private network access, custom tools, compliance |
+
+### Custom Runner Images
+
+Both Ubuntu and Windows custom runner images are defined in `runners/` and built by the `runner-build-images.yml` workflow:
+
+| Image | Base OS | Pre-installed Tools | Dockerfile |
+|-------|---------|-------------------|------------|
+| `github-runner-ubuntu` | Ubuntu 22.04 | .NET 8, Python 3.12, Node 20, Azure CLI, Docker CLI | [`runners/ubuntu/Dockerfile`](runners/ubuntu/Dockerfile) |
+| `github-runner-windows` | Windows Server 2022 LTSC | .NET 8, Node 20, Azure CLI, Git | [`runners/windows/Dockerfile`](runners/windows/Dockerfile) |
+
+Both images:
+- Run as **non-root** users (`runner` / `ContainerUser`)
+- Include the GitHub Actions runner agent (configurable version)
+- Auto-register with GitHub on startup and deregister on shutdown
+- Are tagged with `commit SHA` (immutable) + `latest`
+- Are pushed to ACR (`acrssdlcdemo.azurecr.io`)
+
+### Workflows
+
+| Workflow | File | Purpose |
+|----------|------|---------|
+| **Build Runner Images** | [`runner-build-images.yml`](.github/workflows/runner-build-images.yml) | Builds Ubuntu/Windows images via `az acr build`, pushes to ACR |
+| **Runner Test — Larger Hosted** | [`runner-larger-hosted.yml`](.github/workflows/runner-larger-hosted.yml) | Tests GitHub-hosted runners (standard vs larger) with build time comparison |
+| **Runner Test — ACI Self-Hosted** | [`runner-aci-selfhosted.yml`](.github/workflows/runner-aci-selfhosted.yml) | Tests self-hosted ACI runners with OIDC Azure connectivity |
+
+### Setup Guide
+
+#### Scenario 1: GitHub Larger Hosted Runners
+
+1. Go to **Settings → Actions → Runners → New GitHub-hosted runner**
+2. Choose OS (Linux/Windows), machine size (4/8/16/32/64 cores), and a label name
+3. Trigger the workflow with that label:
+   ```
+   gh workflow run "Runner Test - GitHub Larger Hosted" -f runner_label=my-4core-runner
+   ```
+
+#### Scenario 2: ACI Self-Hosted Runners
+
+```powershell
+# 1. Build the custom image (triggers ACR build)
+gh workflow run "Build Runner Images" -f build_ubuntu=true -f build_windows=false
+
+# 2. Deploy runner to ACI (needs a GitHub PAT with repo + admin:org scope)
+.\scripts\setup-aci-github-runner.ps1 `
+    -GitHubOrg "ncheruvu-MSFT" `
+    -GitHubRepo "az-github-ssdlc-demo" `
+    -GitHubPAT $env:GITHUB_PAT `
+    -ContainerImage "acrssdlcdemo.azurecr.io/github-runner-ubuntu:latest"
+
+# 3. Verify runner is online
+gh api repos/ncheruvu-MSFT/az-github-ssdlc-demo/actions/runners --jq '.runners[]'
+
+# 4. Trigger the test workflow
+gh workflow run "Runner Test - ACI Self-Hosted" -f run_on_selfhosted=true
+
+# 5. Cleanup when done
+az container delete -g rg-ssdlc-runners-dev -n aci-runner-01 --yes
+```
+
+### File Structure
+
+```
+runners/
+├── ubuntu/
+│   ├── Dockerfile          # Custom Ubuntu 22.04 runner image
+│   └── entrypoint.sh       # Auto-register/deregister with GitHub
+└── windows/
+    ├── Dockerfile          # Custom Windows Server 2022 runner image
+    └── entrypoint.ps1      # Auto-register/deregister with GitHub
+
+scripts/
+└── setup-aci-github-runner.ps1   # Deploy runner container to ACI
+
+.github/workflows/
+├── runner-build-images.yml       # Build & push runner images to ACR
+├── runner-larger-hosted.yml      # Test larger hosted runners
+└── runner-aci-selfhosted.yml     # Test ACI self-hosted runners
+```
 
 ---
 
