@@ -1,7 +1,9 @@
 # ==============================================================================
 # Scenario 1: GitHub-Hosted Larger Runners
 # Demonstrates using configurable GitHub-hosted runners with larger specs
-# Requires: Larger runner configured in repo/org settings (Settings > Actions > Runners)
+# NOTE: Larger runners require GitHub Team/Enterprise plan and must be configured
+#       in Settings > Actions > Runners > New GitHub-hosted runner BEFORE use.
+#       Default uses ubuntu-latest so the workflow always succeeds for testing.
 # ==============================================================================
 name: "Runner Test - GitHub Larger Hosted"
 
@@ -9,24 +11,19 @@ on:
   workflow_dispatch:
     inputs:
       runner_label:
-        description: "Larger runner label (configured in Settings > Actions > Runners)"
+        description: "Runner label (use ubuntu-latest to test, or your configured larger runner name)"
         required: false
-        default: "ubuntu-latest-4-cores"
-        type: choice
-        options:
-          - ubuntu-latest-4-cores
-          - ubuntu-latest-8-cores
-          - ubuntu-latest-16-cores
-          - windows-latest-8-cores
+        default: "ubuntu-latest"
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  # ── Test on GitHub Larger Runner ───────────────────────────────
+  # ── Test on specified runner ───────────────────────────────────
   larger-runner-test:
-    name: "Build on Larger Runner (${{ inputs.runner_label }})"
-    runs-on: ${{ inputs.runner_label }}
+    name: "Build on Runner (${{ inputs.runner_label || 'ubuntu-latest' }})"
+    runs-on: ${{ inputs.runner_label || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - name: Checkout

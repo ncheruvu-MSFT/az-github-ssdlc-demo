@@ -55,8 +55,10 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Build & push Ubuntu image to ACR
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
-          echo "=== Building Ubuntu runner image ==="
+          echo "=== Building Ubuntu runner image (synchronous) ==="
           echo "  ACR: ${{ env.ACR_NAME }}.azurecr.io"
           echo "  Tag: github-runner-ubuntu:${{ github.sha }}"
           echo "  Runner Version: ${{ env.RUNNER_VERSION }}"
@@ -67,32 +69,7 @@ jobs:
             --image github-runner-ubuntu:latest \
             --build-arg RUNNER_VERSION=${{ env.RUNNER_VERSION }} \
             --file runners/ubuntu/Dockerfile \
-            --no-wait \
             runners/ubuntu/
-
-      - name: Wait for ACR build to complete
-        run: |
-          echo "=== Waiting for ACR build task ==="
-          # Poll for the latest run to complete
-          for i in $(seq 1 30); do
-            STATUS=$(az acr task list-runs \
-              --registry ${{ env.ACR_NAME }} \
-              --top 1 \
-              --query "[0].status" -o tsv 2>/dev/null || echo "Unknown")
-
-            echo "  Attempt $i/30 — Status: $STATUS"
-
-            if [ "$STATUS" = "Succeeded" ]; then
-              echo "  Ubuntu image build succeeded!"
-              break
-            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Error" ]; then
-              echo "  Ubuntu image build FAILED!"
-              az acr task logs --registry ${{ env.ACR_NAME }} --run-id $(az acr task list-runs --registry ${{ env.ACR_NAME }} --top 1 --query "[0].runId" -o tsv) || true
-              exit 1
-            fi
-
-            sleep 20
-          done
 
       - name: Verify Ubuntu image in ACR
         run: |
@@ -133,8 +110,10 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Build & push Windows image to ACR
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
-          echo "=== Building Windows runner image ==="
+          echo "=== Building Windows runner image (synchronous) ==="
           echo "  ACR: ${{ env.ACR_NAME }}.azurecr.io"
           echo "  Tag: github-runner-windows:${{ github.sha }}"
           echo "  Runner Version: ${{ env.RUNNER_VERSION }}"
@@ -146,31 +125,7 @@ jobs:
             --platform windows \
             --build-arg RUNNER_VERSION=${{ env.RUNNER_VERSION }} \
             --file runners/windows/Dockerfile \
-            --no-wait \
             runners/windows/
-
-      - name: Wait for ACR build to complete
-        run: |
-          echo "=== Waiting for ACR build task ==="
-          for i in $(seq 1  45); do
-            STATUS=$(az acr task list-runs \
-              --registry ${{ env.ACR_NAME }} \
-              --top 1 \
-              --query "[0].status" -o tsv 2>/dev/null || echo "Unknown")
-
-            echo "  Attempt $i/45 — Status: $STATUS"
-
-            if [ "$STATUS" = "Succeeded" ]; then
-              echo "  Windows image build succeeded!"
-              break
-            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Error" ]; then
-              echo "  Windows image build FAILED!"
-              az acr task logs --registry ${{ env.ACR_NAME }} --run-id $(az acr task list-runs --registry ${{ env.ACR_NAME }} --top 1 --query "[0].runId" -o tsv) || true
-              exit 1
-            fi
-
-            sleep 30
-          done
 
       - name: Verify Windows image in ACR
         run: |
