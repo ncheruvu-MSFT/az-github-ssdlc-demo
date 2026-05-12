@@ -1,0 +1,120 @@
+# ==============================================================================
+# Scenario 1: GitHub-Hosted Larger Runners
+# Demonstrates using configurable GitHub-hosted runners with larger specs
+# Requires: Larger runner configured in repo/org settings (Settings > Actions > Runners)
+# ==============================================================================
+name: "Runner Test - GitHub Larger Hosted"
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: "Larger runner label (configured in Settings > Actions > Runners)"
+        required: false
+        default: "ubuntu-latest-4-cores"
+        type: choice
+        options:
+          - ubuntu-latest-4-cores
+          - ubuntu-latest-8-cores
+          - ubuntu-latest-16-cores
+          - windows-latest-8-cores
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Test on GitHub Larger Runner ───────────────────────────────
+  larger-runner-test:
+    name: "Build on Larger Runner (${{ inputs.runner_label }})"
+    runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runner diagnostics
+        run: |
+          echo "=== Runner Information ==="
+          echo "Runner Name: ${{ runner.name }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner Arch: ${{ runner.arch }}"
+          echo ""
+          echo "=== Hardware Specs ==="
+          nproc || echo "nproc not available"
+          free -h || echo "free not available"
+          df -h / || echo "df not available"
+          cat /proc/cpuinfo | grep "model name" | head -1 || true
+          echo ""
+          echo "=== Network ==="
+          curl -s ifconfig.me || true
+        shell: bash
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build .NET solution
+        run: |
+          echo "=== Building on larger runner to demonstrate speed ==="
+          time dotnet restore SsdlcDemo.sln
+          time dotnet build SsdlcDemo.sln --configuration Release --no-restore
+        shell: bash
+
+      - name: Run tests
+        run: |
+          time dotnet test SsdlcDemo.sln --configuration Release --no-build --verbosity normal
+        shell: bash
+
+      - name: Summary
+        run: |
+          echo "## Larger Runner Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner Label | \`${{ inputs.runner_label }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner Name | \`${{ runner.name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner OS | \`${{ runner.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| CPUs | \`$(nproc 2>/dev/null || echo N/A)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Memory | \`$(free -h 2>/dev/null | awk '/^Mem:/{print $2}' || echo N/A)\` |" >> $GITHUB_STEP_SUMMARY
+        shell: bash
+
+  # ── Fallback: Test on standard runner for comparison ───────────
+  standard-runner-baseline:
+    name: "Baseline on ubuntu-latest (2 cores)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runner diagnostics
+        run: |
+          echo "=== Baseline Runner Information ==="
+          echo "Runner Name: ${{ runner.name }}"
+          echo "CPUs: $(nproc)"
+          echo "Memory: $(free -h | awk '/^Mem:/{print $2}')"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build .NET solution
+        run: |
+          time dotnet restore SsdlcDemo.sln
+          time dotnet build SsdlcDemo.sln --configuration Release --no-restore
+
+      - name: Run tests
+        run: |
+          time dotnet test SsdlcDemo.sln --configuration Release --no-build --verbosity normal
+
+      - name: Summary
+        run: |
+          echo "## Standard Runner Baseline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner Label | \`ubuntu-latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| CPUs | \`$(nproc)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Memory | \`$(free -h | awk '/^Mem:/{print $2}')\` |" >> $GITHUB_STEP_SUMMARY

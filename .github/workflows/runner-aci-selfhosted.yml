@@ -1,0 +1,131 @@
+# ==============================================================================
+# Scenario 2: Self-Hosted Runner on Azure Container Instances (ACI)
+# Demonstrates using ACI-based self-hosted runners for GitHub Actions
+# Requires: ACI runner deployed via scripts/setup-aci-github-runner.ps1
+# ==============================================================================
+name: "Runner Test - ACI Self-Hosted"
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_on_selfhosted:
+        description: "Run on self-hosted ACI runner?"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  DOTNET_VERSION: "8.0.x"
+
+jobs:
+  # ── Test on ACI Self-Hosted Runner ─────────────────────────────
+  aci-runner-test:
+    name: "Build on ACI Self-Hosted Runner"
+    runs-on: [self-hosted, aci, linux]
+    if: ${{ inputs.run_on_selfhosted }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runner diagnostics
+        run: |
+          echo "=== Self-Hosted ACI Runner Information ==="
+          echo "Runner Name: ${{ runner.name }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner Arch: ${{ runner.arch }}"
+          echo ""
+          echo "=== Hardware Specs ==="
+          nproc
+          free -h
+          df -h /
+          echo ""
+          echo "=== Container Metadata ==="
+          cat /proc/self/cgroup 2>/dev/null | head -5 || true
+          echo ""
+          echo "=== Network (should be Azure IP) ==="
+          curl -s ifconfig.me || true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build .NET solution
+        run: |
+          echo "=== Building on ACI self-hosted runner ==="
+          time dotnet restore SsdlcDemo.sln
+          time dotnet build SsdlcDemo.sln --configuration Release --no-restore
+
+      - name: Run tests
+        run: |
+          time dotnet test SsdlcDemo.sln --configuration Release --no-build --verbosity normal
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure connectivity from runner
+        run: |
+          echo "=== Azure Context (proves runner can reach Azure via OIDC) ==="
+          az account show --query "{subscription:name, tenantId:tenantId}" -o table
+          az group list --query "[?tags.Project=='ssdlc-demo'].{Name:name, Location:location}" -o table
+
+      - name: Summary
+        run: |
+          echo "## ACI Self-Hosted Runner Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner Name | \`${{ runner.name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner OS | \`${{ runner.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| CPUs | \`$(nproc)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Memory | \`$(free -h | awk '/^Mem:/{print $2}')\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Azure Connected | Yes (OIDC) |" >> $GITHUB_STEP_SUMMARY
+
+  # ── Comparison: Same job on GitHub-hosted for baseline ─────────
+  github-hosted-baseline:
+    name: "Baseline on GitHub-hosted (ubuntu-latest)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runner diagnostics
+        run: |
+          echo "=== GitHub-Hosted Baseline ==="
+          echo "Runner Name: ${{ runner.name }}"
+          echo "CPUs: $(nproc)"
+          echo "Memory: $(free -h | awk '/^Mem:/{print $2}')"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build .NET solution
+        run: |
+          time dotnet restore SsdlcDemo.sln
+          time dotnet build SsdlcDemo.sln --configuration Release --no-restore
+
+      - name: Run tests
+        run: |
+          time dotnet test SsdlcDemo.sln --configuration Release --no-build --verbosity normal
+
+      - name: Summary
+        run: |
+          echo "## GitHub-Hosted Baseline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner Label | \`ubuntu-latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| CPUs | \`$(nproc)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Memory | \`$(free -h | awk '/^Mem:/{print $2}')\` |" >> $GITHUB_STEP_SUMMARY
